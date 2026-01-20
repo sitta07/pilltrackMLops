@@ -1,0 +1,39 @@
+# params.yaml
+prepare:
+  input_dir: "data/raw"
+  processed_dir: "data/processed"
+
+augment:
+  # 💊 การตั้งค่าสำหรับเม็ดยา (Pill)
+  pill:
+    target_per_class: 350
+    geometry:
+      rotation: 15
+      translate: 0.1
+      scale_min: 0.85
+      scale_max: 1.15
+      shear: 5
+    color:
+      brightness: 0.2
+      contrast: 0.2
+      saturation: 0.2
+
+  # 📦 การตั้งค่าสำหรับกล่องยา (Box) - อาจจะต้องหมุนเยอะกว่า แสงเพี้ยนได้มากกว่า
+  box:
+    target_per_class: 500
+    geometry:
+      rotation: 90      # กล่องหมุนได้รอบทิศ
+      translate: 0.2
+      scale_min: 0.8
+      scale_max: 1.2
+      shear: 10
+    color:
+      brightness: 0.3
+      contrast: 0.3
+      saturation: 0.3
+
+split:
+  train_size: 0.7   # ใช้เทรน 70%
+  val_size: 0.15    # ใช้จูน 15%
+  test_size: 0.15   # ใช้สอบจริง 15%
+  seed: 42          # ล็อคเลขสุ่ม ผลจะได้นิ่งๆ

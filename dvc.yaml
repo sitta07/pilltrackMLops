@@ -1,0 +1,29 @@
+stages:
+  preprocess_background:
+    cmd: python src/data/remove_background.py --input data/raw --output 
+      data/processed
+    deps:
+    - data/raw
+    - src/data/remove_background.py
+    outs:
+    - data/processed
+  split_data:
+    cmd: python src/data/split_data.py --input data/processed --output 
+      data/dataset_split
+    deps:
+    - data/processed
+    - src/data/split_data.py
+    params:
+    - split
+    outs:
+    - data/dataset_split
+  augment_train:
+    cmd: python src/data/augment.py --input data/dataset_split/train --output 
+      data/dataset_train_final --type pill
+    deps:
+    - data/dataset_split/train
+    - src/data/augment.py
+    params:
+    - augment.pill
+    outs:
+    - data/dataset_train_final

@@ -1,0 +1,47 @@
+schema: '2.0'
+stages:
+  preprocess_background:
+    cmd: python src/data/remove_background.py --input data/raw --output 
+      data/processed
+    deps:
+    - path: data/raw
+      hash: md5
+      md5: 7ad555ec0363a892d35743fe5ec2038c.dir
+      size: 909741
+      nfiles: 12
+    - path: src/data/remove_background.py
+      hash: md5
+      md5: 311142ec8ebbf6560b294f41d0c3ceee
+      size: 3139
+    outs:
+    - path: data/processed
+      hash: md5
+      md5: e8d0f42752733c405e80a8665f54146b.dir
+      size: 2245538
+      nfiles: 12
+  split_data:
+    cmd: python src/data/split_data.py --input data/processed --output 
+      data/dataset_split
+    deps:
+    - path: data/processed
+      hash: md5
+      md5: e8d0f42752733c405e80a8665f54146b.dir
+      size: 2245538
+      nfiles: 12
+    - path: src/data/split_data.py
+      hash: md5
+      md5: ed2ca580ef70b906fdf2ee6830863b21
+      size: 3484
+    params:
+      params.yaml:
+        split:
+          train_size: 0.7
+          val_size: 0.15
+          test_size: 0.15
+          seed: 42
+    outs:
+    - path: data/dataset_split
+      hash: md5
+      md5: 0aba04a459c7f74d4660defe284e10a4.dir
+      size: 2245538
+      nfiles: 12
