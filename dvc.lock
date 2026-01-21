@@ -157,17 +157,18 @@ stages:
       nfiles: 32
     - path: src/data/split_data.py
       hash: md5
-      md5: ed94aaa38e11b953c52cf1a5236536c3
-      size: 3028
+      md5: 028308f6ef18eb9f907c165ea0303708
+      size: 2863
     params:
       params.yaml:
         split:
           val_ratio: 0.2
+          test_ratio: 0.1
           seed: 42
     outs:
     - path: data/dataset_split_box
       hash: md5
-      md5: 391eec9fad889e2b18212f561dd250ba.dir
+      md5: 3a60f543e0ff4c569b193f9d0a37ef03.dir
       size: 4567952
       nfiles: 32
   augment_box:
@@ -176,9 +177,9 @@ stages:
     deps:
     - path: data/dataset_split_box/train
       hash: md5
-      md5: c562ca8690d6b73dff1902e4fbc91ec5.dir
-      size: 3375111
-      nfiles: 24
+      md5: 567da153f4187970207806b182e30c1b.dir
+      size: 2833843
+      nfiles: 20
     - path: src/data/augment.py
       hash: md5
       md5: ec107f83c0410206702b58e27f35bd69
@@ -199,8 +200,8 @@ stages:
     outs:
     - path: data/dataset_train_final_box
       hash: md5
-      md5: 0a57ba812592b5c74582e484fff17786.dir
-      size: 185516338
+      md5: cab96de60627e13a5872c3ec18527344.dir
+      size: 183684127
       nfiles: 1214
   train_box:
     cmd: python src/train.py --train_dir data/dataset_train_final_box --val_dir 
@@ -209,13 +210,13 @@ stages:
     deps:
     - path: data/dataset_split_box/val
       hash: md5
-      md5: 497dce1749cf6c88636c1c7243e30b86.dir
-      size: 1192841
+      md5: 1aaad21ea4181637c45d2034166b9bfe.dir
+      size: 1167610
       nfiles: 8
     - path: data/dataset_train_final_box
       hash: md5
-      md5: 0a57ba812592b5c74582e484fff17786.dir
-      size: 185516338
+      md5: cab96de60627e13a5872c3ec18527344.dir
+      size: 183684127
       nfiles: 1214
     - path: src/data/dataset.py
       hash: md5
@@ -248,7 +249,7 @@ stages:
     outs:
     - path: experiments/arcface_lite_v1/box
       hash: md5
-      md5: 9c16cbc07810752ec6557f4379e688ad.dir
+      md5: cb88a76abcf0d3bc2942c20e1d88c668.dir
       size: 199561939
       nfiles: 2
   finetune_box:
@@ -258,12 +259,12 @@ stages:
     deps:
     - path: data/dataset_train_final_box
       hash: md5
-      md5: 0a57ba812592b5c74582e484fff17786.dir
-      size: 185516338
+      md5: cab96de60627e13a5872c3ec18527344.dir
+      size: 183684127
       nfiles: 1214
     - path: experiments/arcface_lite_v1/box
       hash: md5
-      md5: 9c16cbc07810752ec6557f4379e688ad.dir
+      md5: cb88a76abcf0d3bc2942c20e1d88c668.dir
       size: 199561939
       nfiles: 2
     - path: src/finetune.py
@@ -289,6 +290,29 @@ stages:
     outs:
     - path: experiments/arcface_finetuned/box
       hash: md5
-      md5: d3ac2e73e9dce290a1852d1a0cf43461.dir
+      md5: 91e49bacb309a6b0c33902a1d1a098e7.dir
       size: 199561939
       nfiles: 2
+  evaluate_box:
+    cmd: python src/evaluate.py --test_dir data/dataset_split_box/test 
+      --model_dir experiments/arcface_finetuned/box --metrics_out 
+      metrics/box_metrics.json --type box --threshold 70.0
+    deps:
+    - path: data/dataset_split_box/test
+      hash: md5
+      md5: fda3596858b055ffe666e1491fcc91dc.dir
+      size: 566499
+      nfiles: 4
+    - path: experiments/arcface_finetuned/box/best_model.pth
+      hash: md5
+      md5: 15d299118309642e6d6bcb92ea4bcad8
+      size: 199561825
+    - path: src/evaluate.py
+      hash: md5
+      md5: 1b5c402165b2ec834784ece09f5d0643
+      size: 3375
+    outs:
+    - path: metrics/box_metrics.json
+      hash: md5
+      md5: 15536012ef9af01229bad630effb56e0
+      size: 45
