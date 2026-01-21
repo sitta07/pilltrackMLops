@@ -45,3 +45,85 @@ stages:
       md5: 0aba04a459c7f74d4660defe284e10a4.dir
       size: 2245538
       nfiles: 12
+  augment_train:
+    cmd: python src/data/augment.py --input data/dataset_split/train --output 
+      data/dataset_train_final --type pill
+    deps:
+    - path: data/dataset_split/train
+      hash: md5
+      md5: c9df15e2e8567f251f4ef58afc4268f1.dir
+      size: 1494328
+      nfiles: 8
+    - path: src/data/augment.py
+      hash: md5
+      md5: 6a763bd63cca6af1dbfef6518d6e0df9
+      size: 5144
+    params:
+      params.yaml:
+        augment.pill:
+          target_per_class: 350
+          geometry:
+            rotation: 15
+            translate: 0.1
+            scale_min: 0.85
+            scale_max: 1.15
+            shear: 5
+          color:
+            brightness: 0.2
+            contrast: 0.2
+            saturation: 0.2
+    outs:
+    - path: data/dataset_train_final
+      hash: md5
+      md5: 4decf4ea735adbc9ffa6a77f159db93d.dir
+      size: 132329714
+      nfiles: 701
+  train_pill:
+    cmd: python src/train.py --train_dir data/dataset_train_final --val_dir 
+      data/dataset_split/val --output_dir experiments/arcface_lite_v1 --type 
+      pill
+    deps:
+    - path: data/dataset_split/val
+      hash: md5
+      md5: 3f21324304c29739bcd24b4b55280eb0.dir
+      size: 386837
+      nfiles: 2
+    - path: data/dataset_train_final
+      hash: md5
+      md5: 4decf4ea735adbc9ffa6a77f159db93d.dir
+      size: 132329714
+      nfiles: 701
+    - path: src/data/dataset.py
+      hash: md5
+      md5: 23d75ec6b6deee76290922aef5045849
+      size: 1604
+    - path: src/models/architecture.py
+      hash: md5
+      md5: 1b1845f920a565b22e3cb27749d4ba96
+      size: 2433
+    - path: src/train.py
+      hash: md5
+      md5: 76992b13a2fc81112140737ef9d2b72b
+      size: 8668
+    params:
+      params.yaml:
+        train.pill:
+          model_name: convnext_tiny
+          img_size: 224
+          batch_size: 32
+          epochs: 1
+          lr: 0.0001
+          weight_decay: 0.0001
+          dropout: 0.3
+          embed_dim: 512
+          focal:
+            gamma: 2.0
+            alpha: 0.25
+          seed: 42
+          num_workers: 0
+    outs:
+    - path: experiments/arcface_lite_v1/pill
+      hash: md5
+      md5: 8bb4f9bb2ada5e7d01f93850a9c0bf1b.dir
+      size: 451803986
+      nfiles: 4
