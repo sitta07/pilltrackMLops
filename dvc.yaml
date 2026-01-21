@@ -27,3 +27,17 @@ stages:
     - augment.pill
     outs:
     - data/dataset_train_final
+  train_pill:
+    cmd: python src/train.py --train_dir data/dataset_train_final --val_dir 
+      data/dataset_split/val --output_dir experiments/arcface_lite_v1 --type 
+      pill
+    deps:
+    - data/dataset_split/val
+    - data/dataset_train_final
+    - src/data/dataset.py
+    - src/models/architecture.py
+    - src/train.py
+    params:
+    - train.pill
+    outs:
+    - experiments/arcface_lite_v1/pill
