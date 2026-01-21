@@ -1,10 +1,14 @@
-# src/data/remove_background.py
 import os
 import argparse
 from PIL import Image
 from tqdm.auto import tqdm
 import torch
 from transparent_background import Remover
+import logging
+
+# Setup Logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
+logger = logging.getLogger("Preprocess")
 
 # กำหนดนามสกุลไฟล์ที่รองรับ
 VALID_EXTENSIONS = ('.jpg', '.jpeg', '.png', '.bmp', '.webp')
@@ -18,63 +22,73 @@ def process_background_removal(input_root, output_root, model_type='base'):
     device = 'mps' if torch.backends.mps.is_available() else 'cpu'
     if torch.cuda.is_available(): device = 'cuda'
     
-    print(f"⚡ Using device: {device.upper()}")
-    print(f"⏳ Loading AI model ({model_type})...")
+    logger.info(f"⚡ Using device: {device.upper()}")
     
-    # Load Model ครั้งเดียวใช้นานๆ
-    remover = Remover(mode=model_type, device=device)
-
-    # 3. Scan Files
-    all_files = []
+    # 3. Scan Files First (เพื่อดูว่าต้องทำกี่รูป)
+    files_to_process = []
+    skipped_count = 0
+    
     for root, dirs, files in os.walk(input_root):
         for file in files:
             if file.lower().endswith(VALID_EXTENSIONS):
-                all_files.append(os.path.join(root, file))
+                input_path = os.path.join(root, file)
+                
+                # Construct Output Path
+                rel_path = os.path.relpath(os.path.dirname(input_path), input_root)
+                output_dir = os.path.join(output_root, rel_path)
+                
+                base_name = os.path.splitext(file)[0]
+                output_path = os.path.join(output_dir, base_name + ".png")
+                
+                # 🔥 LAZY CHECK: เช็คก่อนเลยว่ามีไฟล์ปลายทางหรือยัง
+                if os.path.exists(output_path):
+                    skipped_count += 1
+                else:
+                    files_to_process.append((input_path, output_dir, output_path))
 
-    if not all_files:
-        print("❌ No valid images found")
+    if not files_to_process:
+        logger.info(f"✨ All {skipped_count} images are already processed. Nothing to do!")
         return
 
-    print(f"🔥 Found {len(all_files)} images. Starting processing...")
+    logger.info(f"🔥 Found {len(files_to_process)} NEW images to process (Skipped {skipped_count} existing).")
 
-    # 4. Processing Loop
+    # 4. Load Model (โหลดเฉพาะเมื่อมีงานต้องทำ)
+    logger.info(f"⏳ Loading AI model ({model_type})...")
+    remover = Remover(mode=model_type, device=device)
+
+    # 5. Processing Loop
     success = 0
     error_count = 0
 
-    pbar = tqdm(all_files, desc="⚡ Removing Background", unit="img")
-    for file_path in pbar:
+    pbar = tqdm(files_to_process, desc="⚡ Removing Background", unit="img")
+    for input_path, output_dir, output_path in pbar:
         try:
-            # สร้าง path ปลายทางโดยคง structure เดิม
-            rel_path = os.path.relpath(os.path.dirname(file_path), input_root)
-            output_dir = os.path.join(output_root, rel_path)
             os.makedirs(output_dir, exist_ok=True)
 
             # Process
-            img = Image.open(file_path).convert("RGB")
+            img = Image.open(input_path).convert("RGB")
             out = remover.process(img)
 
             # Save as PNG
-            base_name = os.path.splitext(os.path.basename(file_path))[0]
-            output_path = os.path.join(output_dir, base_name + ".png")
             out.save(output_path)
 
             success += 1
-            pbar.set_postfix(file=base_name[:10], status="OK")
+            pbar.set_postfix(status="OK")
 
         except Exception as e:
             error_count += 1
-            pbar.set_postfix(file=base_name[:10], status="ERR")
-            # print(f"⚠️ Error {file_path}: {e}")
+            pbar.set_postfix(status="ERR")
+            logger.error(f"⚠️ Error processing {input_path}: {e}")
 
     print("\n" + "=" * 40)
     print(f"🎉 Processing Complete!")
-    print(f"✅ Success: {success}")
+    print(f"✅ Processed New: {success}")
+    print(f"⏩ Skipped Old: {skipped_count}")
     print(f"❌ Error: {error_count}")
     print(f"📂 Output: {output_root}")
     print("=" * 40)
 
 if __name__ == "__main__":
-    # ส่วนสำคัญ: รับค่าจาก Command Line (DVC จะส่งค่ามาทางนี้)
     parser = argparse.ArgumentParser(description="Remove background from images")
     parser.add_argument("--input", required=True, help="Path to raw images")
     parser.add_argument("--output", required=True, help="Path to save processed images")

@@ -1,97 +1,72 @@
-# src/data/split_data.py
+# src/data/split_data.py (Updated for 3-way split)
 import os
-import shutil
 import argparse
 import yaml
-import numpy as np
-from pathlib import Path
+import shutil
 from sklearn.model_selection import train_test_split
 from tqdm import tqdm
+import logging
 
-# ฟังก์ชันโหลด Config
-def load_params(param_path):
-    with open(param_path, 'r') as f:
-        return yaml.safe_load(f)
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
 
-def main(input_path, output_path):
-    # 1. Load Config from params.yaml
-    params = load_params("params.yaml")
-    split_conf = params["split"]
+def main(input_dir, output_dir):
+    # Load Params
+    with open("params.yaml", "r") as f:
+        params = yaml.safe_load(f)
     
-    seed = split_conf["seed"]
-    train_ratio = split_conf["train_size"]
-    val_ratio = split_conf["val_size"]
-    test_ratio = split_conf["test_size"]
+    split_conf = params.get("split", {})
+    val_ratio = split_conf.get("val_ratio", 0.2)
+    test_ratio = split_conf.get("test_ratio", 0.1) # 🔥 อ่านค่า test ratio
+    seed = split_conf.get("seed", 42)
 
-    # เช็คว่าบวกกันได้ 1.0 หรือเปล่า
-    if not np.isclose(train_ratio + val_ratio + test_ratio, 1.0):
-        raise ValueError(f"❌ Ratios must sum to 1.0 (Got {train_ratio + val_ratio + test_ratio})")
-
-    input_path = Path(input_path)
-    output_path = Path(output_path)
-
-    # 2. Reset Output Directory (Idempotency Key 🔑)
-    # ต้องลบของเก่าทิ้งก่อนสร้างใหม่ เพื่อให้ผลลัพธ์เหมือนเดิมทุกครั้งที่รัน
-    if output_path.exists():
-        shutil.rmtree(output_path)
+    # Cleanup
+    if os.path.exists(output_dir): shutil.rmtree(output_dir)
     
-    # สร้าง folder รอ: train, val, test
-    for split in ['train', 'val', 'test']:
-        (output_path / split).mkdir(parents=True, exist_ok=True)
+    # สร้าง 3 โฟลเดอร์
+    subsets = ['train', 'val', 'test']
+    for sub in subsets:
+        os.makedirs(os.path.join(output_dir, sub), exist_ok=True)
 
-    print(f"🚀 STARTING STRATIFIED SPLIT")
-    print(f"   🎯 Ratios: Train={train_ratio}, Val={val_ratio}, Test={test_ratio}")
-
-    # 3. Process each class
-    classes = [d.name for d in input_path.iterdir() if d.is_dir()]
+    classes = [d for d in os.listdir(input_dir) if os.path.isdir(os.path.join(input_dir, d))]
     
-    for class_name in tqdm(classes, desc="Splitting Classes"):
-        src_dir = input_path / class_name
-        images = list(src_dir.glob("*.png"))
+    for cls in tqdm(classes, desc="Splitting Data"):
+        cls_path = os.path.join(input_dir, cls)
+        images = [f for f in os.listdir(cls_path) if f.lower().endswith(('.jpg', '.png'))]
         
-        if not images:
-            continue
+        if not images: continue
 
-        # --- Logic การแบ่งแบบ Stratified (แบ่ง 2 รอบ) ---
-        # รอบ 1: แยก Train ออกจาก (Val + Test)
-        train_imgs, temp_imgs = train_test_split(
-            images, 
-            train_size=train_ratio, 
-            random_state=seed,
-            shuffle=True
+        # 🔥 Logic: Split 2 รอบ
+        # รอบ 1: แยก Test ออกมาก่อน (เช่น 10%)
+        # รอบ 2: เอาที่เหลือมาแยก Train/Val
+        
+        train_val_imgs, test_imgs = train_test_split(
+            images, test_size=test_ratio, random_state=seed, shuffle=True
+        )
+        
+        # คำนวณ Ratio ใหม่สำหรับ Val เทียบกับก้อนที่เหลือ
+        # เช่น ต้องการ Val 20% จากทั้งหมด -> แต่ตอนนี้เหลือแค่ 90%
+        # adjusted_val_ratio = 0.2 / (1 - 0.1) = 0.222...
+        remaining_ratio = 1.0 - test_ratio
+        if remaining_ratio == 0: remaining_ratio = 1.0 # กัน Error
+        
+        adjusted_val_ratio = val_ratio / remaining_ratio
+        
+        train_imgs, val_imgs = train_test_split(
+            train_val_imgs, test_size=adjusted_val_ratio, random_state=seed, shuffle=True
         )
 
-        # รอบ 2: แยก Val กับ Test ออกจากก้อนที่เหลือ
-        # ต้องคำนวณ Ratio ใหม่เทียบกับก้อนที่เหลือ
-        val_relative = val_ratio / (val_ratio + test_ratio)
-        
-        val_imgs, test_imgs = train_test_split(
-            temp_imgs, 
-            train_size=val_relative, 
-            random_state=seed,
-            shuffle=True
-        )
+        # Copy Files
+        for sub, imgs in zip(subsets, [train_imgs, val_imgs, test_imgs]):
+            dst_dir = os.path.join(output_dir, sub, cls)
+            os.makedirs(dst_dir, exist_ok=True)
+            for img in imgs:
+                shutil.copy2(os.path.join(cls_path, img), os.path.join(dst_dir, img))
 
-        # 4. Copy Files ไปลงหลุม
-        splits_map = {
-            'train': train_imgs,
-            'val': val_imgs,
-            'test': test_imgs
-        }
-
-        for split_name, img_list in splits_map.items():
-            dest_dir = output_path / split_name / class_name
-            dest_dir.mkdir(parents=True, exist_ok=True)
-            
-            for img_path in img_list:
-                shutil.copy2(img_path, dest_dir / img_path.name)
-
-    print(f"✅ Splitting Done! Output saved to: {output_path}")
+    print(f"✅ Split Done (Train/Val/Test)! Output: {output_dir}")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--input", required=True)
     parser.add_argument("--output", required=True)
     args = parser.parse_args()
-
     main(args.input, args.output)

@@ -99,3 +99,13 @@ stages:
     - train.box
     outs:
     - experiments/arcface_finetuned/box
+
+  evaluate_box:
+    cmd: python src/evaluate.py --test_dir data/dataset_split_box/test --model_dir experiments/arcface_finetuned/box --type box --threshold 70.0
+    deps:
+    - data/dataset_split_box/test
+    - experiments/arcface_finetuned/box/best_model.pth
+    - src/evaluate.py
+    metrics:
+    - experiments/arcface_finetuned/box/metrics.json:
+        cache: false
