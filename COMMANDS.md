@@ -5,60 +5,71 @@
 
 ---
 
-## 1. Training Workflows (BOX)
-
-### A. เพิ่มยาตัวใหม่ (Daily/Weekly Update)
-ใช้เมื่อใส่โฟลเดอร์ยาใหม่ลงใน `data/raw_box` และต้องการอัปเดตโมเดลด่วน (Fast Finetune)
-
-```bash
-# 1. เตรียมข้อมูล (Preprocess -> Split -> Augment)
-dvc repro augment_box
-
-# 2. ⚠️ สำคัญ: บอก DVC ว่าไม่ต้อง Full Train โมเดลตัวแม่ใหม่ (ข้ามไปเลย)
-dvc commit train_box
-
-# 3. สั่ง Finetune เฉพาะ Head (เร็ว + ไม่ลืมความรู้เก่า)
-dvc repro finetune_box
-```
-
-### B. ล้างกระดานเทรนใหม่หมด (Major Update)
-ใช้เมื่อต้องการ Re-train ตั้งแต่ Backbone (นาน) หรือเปลี่ยน Architecture โมเดล
-```bash
-dvc repro train_box
-```
+## 1. Training Workflows (BOX) 
 (Note: ระบบจะทำ Preprocess -> Split -> Augment -> Full Train ให้เองตามลำดับ)
 
+### A. เพิ่มยาตัวใหม่ (Daily/Weekly Update)
+```bash
+dvc repro augment_box # 1. เตรียมข้อมูล (Preprocess -> Split -> Augment)
+
+dvc commit train_box # 2. สำคัญ: บอก DVC ว่าไม่ต้อง Full Train โมเดลตัวแม่ใหม่ (ข้ามไปเลย)
+
+dvc repro evaluate_box  # 3. สั่ง Finetune & Evaluate (ทำเสร็จตรวจผลให้ด้วย)
+```
+
+### B. เทรนใหม่หมด (Major Update)
+```bash
+dvc repro train_box 
+
+```
 ## 2. Training Workflows (PILL)
 
-สำหรับโมเดลเม็ดยา (Pipeline แยกต่างหาก)
+### A. เพิ่มยาตัวใหม่ (Daily/Weekly Update)
+
+```bash
+dvc repro augment_pill # 1. เตรียมข้อมูล
+
+dvc commit train_pill # 2. ⚠️ ล็อค Base Model (ห้ามเทรนใหม่)
+
+dvc repro evaluate_pill # 3. Finetune & Evaluate
+```
+
+### B. เทรนใหม่หมด (Major Update)
 ```bash
 dvc repro train_pill
 ```
+### ทดสอบ Finetuned Model
 
-## 3. Testing & Inference
-
-ทดสอบโมเดลกับรูปภาพเดี่ยวๆ
-
-ทดสอบ Box Model (ตัว Finetuned)
+**Box Finetuned Model:**
 ```bash
-python src/inference.py --image data/raw_box/ชื่อยา/รูปทดสอบ.jpg --model_dir experiments/arcface_finetuned/box --arch convnext_small
+python src/inference.py \
+    --image data/raw_box/ชื่อยา/รูปทดสอบ.jpg \
+    --model_dir experiments/arcface_finetuned/box \
+    --arch convnext_small
+```
+**Pill Finetuned Model:**
+```bash
+python src/inference.py \
+    --image data/raw/ชื่อยา/รูปทดสอบ.jpg \
+    --model_dir experiments/arcface_finetuned/pill \
+    --arch convnext_tiny
 ```
 
-ทดสอบ Pill Model
+### ทดสอบ Base Model (โมเดลตัวหลัก)
+**Box Base Model:**
 ```bash
-python src/inference.py --image data/raw/ชื่อยา/รูปทดสอบ.jpg --model_dir experiments/arcface_lite_v1/pill --arch convnext_tiny
+python src/inference.py \
+    --image data/raw_box/ชื่อยา/รูปทดสอบ.jpg \
+    --model_dir experiments/arcface_lite_v1/box \
+    --arch convnext_small
+```
+**Pill Base Model:**
+
+```bash
+python src/inference.py \
+    --image data/raw/ชื่อยา/รูปทดสอบ.jpg \
+    --model_dir experiments/arcface_lite_v1/pill \
+    --arch convnext_tiny
 ```
 
-## 4. Config Guide (params.yaml)
-
-แก้ค่าต่างๆ ได้ที่ไฟล์ params.yaml โดยไม่ต้องแตะโค้ด
-augment: ปรับจำนวนรูปที่จะปั๊ม (Target per class), องศาการหมุน
-split: ปรับสัดส่วน Train/Val (Default 0.2)
-train: ปรับ Learning Rate, Epochs, Model Name
-augment:
-  box:
-    target_per_class: 300
-train:
-  box:
-    epochs: 5
 

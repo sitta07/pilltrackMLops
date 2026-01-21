@@ -1,4 +1,3 @@
-# src/evaluate.py
 import os
 import sys
 import argparse
@@ -22,6 +21,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--test_dir", required=True)
     parser.add_argument("--model_dir", required=True)
+    parser.add_argument("--metrics_out", required=True, help="Path to save metrics.json") # 🔥 เพิ่มบรรทัดนี้
     parser.add_argument("--type", required=True, choices=['pill', 'box'])
     parser.add_argument("--threshold", type=float, default=80.0, help="Minimum accuracy required")
     args = parser.parse_args()
@@ -69,7 +69,7 @@ def main():
     with torch.no_grad():
         for imgs, labels in tqdm(test_loader):
             imgs, labels = imgs.to(device), labels.to(device)
-            outputs = model(imgs, labels) # dummy label for forward
+            outputs = model(imgs, labels) 
             
             _, predicted = torch.max(outputs.data, 1)
             total += labels.size(0)
@@ -78,15 +78,19 @@ def main():
     acc = 100 * correct / total
     logger.info(f"📊 Test Accuracy: {acc:.2f}%")
 
-    # 🔥 The Gatekeeper Logic
-    # บันทึกผลลงไฟล์ (เผื่อใช้ดูย้อนหลัง)
+    # 🔥 Save Metrics to Specified Path
+    # สร้างโฟลเดอร์ปลายทางให้ด้วยถ้ายังไม่มี
+    os.makedirs(os.path.dirname(args.metrics_out), exist_ok=True)
+    
     metrics = {"accuracy": acc, "passed": acc >= args.threshold}
-    with open(os.path.join(args.model_dir, "metrics.json"), "w") as f:
+    with open(args.metrics_out, "w") as f:
         json.dump(metrics, f, indent=4)
+    
+    logger.info(f"📝 Metrics saved to: {args.metrics_out}")
 
     if acc < args.threshold:
         logger.error(f"❌ FAILED: Accuracy {acc:.2f}% is lower than threshold {args.threshold}%")
-        sys.exit(1) # ส่งสัญญาณให้ DVC/CI หยุดทำงานทันที!
+        sys.exit(1)
     else:
         logger.info(f"✅ PASSED: Model is ready for production/S3.")
 
