@@ -1,0 +1,6 @@
+outs:
+- md5: 050d2bb04a87a7432bfd4cdceaeb0c24.dir
+  size: 1970761
+  nfiles: 26
+  hash: md5
+  path: raw_pill

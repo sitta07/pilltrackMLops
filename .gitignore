@@ -1,0 +1,51 @@
+# ===============================
+# 🧠 DATASETS (DVC ONLY)
+# ===============================
+data/raw_box/**
+data/raw_pill/**
+data/processed/**
+data/augmented/**
+
+# image files
+*.jpg
+*.jpeg
+*.png
+*.bmp
+*.tiff
+
+# ===============================
+# 🧪 MODELS / CHECKPOINTS
+# ===============================
+*.pth
+*.pt
+*.onnx
+*.h5
+checkpoints/**
+experiments/**/weights/**
+experiments/**/models/**
+
+# ===============================
+# 📊 LOGS / CACHE
+# ===============================
+logs/**
+*.log
+__pycache__/
+*.pyc
+
+# ===============================
+# 🧰 ENV / SYSTEM
+# ===============================
+.env
+.venv
+venv/
+.DS_Store
+
+# ===============================
+# 🧪 NOTEBOOK TEMP
+# ===============================
+.ipynb_checkpoints/
+
+# ===============================
+# 🧠 DVC CACHE (IMPORTANT)
+# ===============================
+.dvc/cache
