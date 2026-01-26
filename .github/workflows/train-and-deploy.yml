@@ -3,37 +3,37 @@ name: PillTrack MLOps Pipeline 💊
 on:
   push:
     tags:
-      - 'v*'
-      - 'pill-v*'
-      - 'box-v*'
-      - 'major-*'
+      - 'v*'          # Standard versioning
+      - 'pill-v*'     # Specific for Pill
+      - 'box-v*'      # Specific for Box
+      - 'major-*'     # Major updates (Full Retrain)
 
 jobs:
   train-and-deploy:
     name: Smart Training Pipeline
     runs-on: self-hosted
     
-    # ❌ ลบ env: RUNNER_TOOL_CACHE ออกไปเลย ไม่ต้องง้อมันแล้ว!
+    # ✅ FIX 1: บังคับ Python ไม่ให้ "อม Log" (ให้พ่นออกมาทันที)
+    env:
+      PYTHONUNBUFFERED: "1"
 
     steps:
       # --- 1. SETUP PHASE ---
       - name: Checkout Code
         uses: actions/checkout@v3
 
-      # ✅ ท่าไม้ตายใหม่: ใช้ Python ในเครื่อง + สร้าง venv
+      # ✅ FIX 2: ใช้ System Python + Venv (แก้ Permission & เร็วขึ้น)
       - name: Setup System Python & Venv
         run: |
           echo "🐍 Using System Python 3.10..."
           # สร้าง venv ชื่อ 'venv' (ถ้ายังไม่มี)
           /opt/homebrew/bin/python3.10 -m venv venv
           
-          # 💡 Trick สำคัญ: เพิ่ม path ของ venv เข้าไปใน GitHub Path
-          # เพื่อให้ Step ต่อๆ ไปรู้จักคำว่า 'python', 'pip', 'dvc' โดยอัตโนมัติ
+          # Add venv path to GitHub Path so next steps use it automatically
           echo "$PWD/venv/bin" >> $GITHUB_PATH
 
       - name: Install Dependencies
         run: |
-          # ตอนนี้ pip คือ pip ของ venv แล้ว (ไม่ต้อง source activate)
           pip install --upgrade pip
           pip install -r requirements.txt
           pip install dvc[s3] python-dotenv
@@ -45,37 +45,47 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ secrets.AWS_REGION }}
 
+      # ✅ FIX 3: สั่ง DVC ให้พูดเยอะๆ (-v) จะได้รู้ว่าโหลดถึงไหนแล้ว
       - name: DVC Pull Data
         run: |
           dvc remote modify myremote --local access_key_id ${{ secrets.AWS_ACCESS_KEY_ID }}
           dvc remote modify myremote --local secret_access_key ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          dvc pull
+          
+          echo "⏳ Pulling data from S3 (Verbose Mode)..."
+          dvc pull -v
 
-      # --- 2. 🧠 THE BRAIN: LOGIC เหมือนเดิมเป๊ะ ---
+      # --- 2. 🧠 THE BRAIN: LOGIC แยกแยะคำสั่ง ---
       - name: Analyze Tag & Execute Pipeline
         run: |
+          # ตัดคำนำหน้า refs/tags/ ออก
           TAG_NAME=${GITHUB_REF#refs/tags/}
           echo "🏷️ Detected Tag: $TAG_NAME"
 
+          # 1. Check Mode (Major vs Incremental)
           if [[ "$TAG_NAME" == *"major"* ]]; then
             MODE="FULL"
-            echo "🔥 Mode: FULL RETRAINING"
+            echo "🔥 Mode: FULL RETRAINING (Major Update)"
           else
             MODE="INCREMENTAL"
-            echo "⚡ Mode: INCREMENTAL UPDATE"
+            echo "⚡ Mode: INCREMENTAL UPDATE (Fast Track)"
           fi
 
+          # 2. Check Target (Pill vs Box vs Both)
           if [[ "$TAG_NAME" == *"pill"* ]]; then
             TARGET="PILL"
+            echo "🎯 Target: PILL ONLY"
           elif [[ "$TAG_NAME" == *"box"* ]]; then
             TARGET="BOX"
+            echo "🎯 Target: BOX ONLY"
           else
             TARGET="BOTH"
+            echo "🎯 Target: BOTH (Pill & Box)"
           fi
-          
-          echo "🎯 Target: $TARGET"
+
           echo "----------------------------------------"
 
+          # 3. EXECUTION LOGIC
+          
           # === PILL PIPELINE ===
           if [[ "$TARGET" == "PILL" ]] || [[ "$TARGET" == "BOTH" ]]; then
             echo "💊 Processing PILL model..."
@@ -86,6 +96,8 @@ jobs:
             else
                dvc repro train_pill 
             fi
+          else
+            echo "⏩ Skipping PILL model..."
           fi
 
           # === BOX PIPELINE ===
@@ -98,6 +110,8 @@ jobs:
             else
                dvc repro train_box
             fi
+          else
+             echo "⏩ Skipping BOX model..."
           fi
 
       # --- 3. DEPLOYMENT PHASE ---
@@ -107,6 +121,8 @@ jobs:
           AWS_REGION: ${{ secrets.AWS_REGION }}
         run: |
           VERSION=${GITHUB_REF#refs/tags/}
+          
+          # Clean version name
           CLEAN_VERSION=$(echo $VERSION | sed 's/major-//' | sed 's/pill-//' | sed 's/box-//')
           
           echo "🚀 Deploying version $CLEAN_VERSION..."
@@ -114,4 +130,4 @@ jobs:
           python src/deploy.py \
             --version $CLEAN_VERSION \
             --path experiments/arcface_finetuned \
-            --note "Deployed via System Python ($VERSION)"
+            --note "Deployed via GitHub Actions ($VERSION)"
