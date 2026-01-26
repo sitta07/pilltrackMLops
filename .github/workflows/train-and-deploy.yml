@@ -3,34 +3,38 @@ name: PillTrack MLOps Pipeline 💊
 on:
   push:
     tags:
-      - 'v*'          # Catch all tags starting with v (e.g., v1.0)
-      - 'pill-v*'     # Specific for Pill (e.g., pill-v1.0)
-      - 'box-v*'      # Specific for Box (e.g., box-v1.0)
-      - 'major-*'     # Catch all major updates (e.g., major-v2.0)
+      - 'v*'
+      - 'pill-v*'
+      - 'box-v*'
+      - 'major-*'
 
 jobs:
   train-and-deploy:
     name: Smart Training Pipeline
     runs-on: self-hosted
     
-    # 👇 SOLUTION: กำหนด Path สำหรับเก็บ Python Tool ไว้ในเครื่องพี่เอง 
-    # (แก้ปัญหา Permission Denied ที่ /Users/runner)
-    env:
-      RUNNER_TOOL_CACHE: /Users/sittasahathum/Desktop/pilltrackMLops/actions-runner/_work/_tool
+    # ❌ ลบ env: RUNNER_TOOL_CACHE ออกไปเลย ไม่ต้องง้อมันแล้ว!
 
     steps:
       # --- 1. SETUP PHASE ---
       - name: Checkout Code
         uses: actions/checkout@v3
 
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.10'
-          # action นี้จะอ่านค่า RUNNER_TOOL_CACHE จาก env ข้างบนโดยอัตโนมัติ
+      # ✅ ท่าไม้ตายใหม่: ใช้ Python ในเครื่อง + สร้าง venv
+      - name: Setup System Python & Venv
+        run: |
+          echo "🐍 Using System Python 3.10..."
+          # สร้าง venv ชื่อ 'venv' (ถ้ายังไม่มี)
+          /opt/homebrew/bin/python3.10 -m venv venv
+          
+          # 💡 Trick สำคัญ: เพิ่ม path ของ venv เข้าไปใน GitHub Path
+          # เพื่อให้ Step ต่อๆ ไปรู้จักคำว่า 'python', 'pip', 'dvc' โดยอัตโนมัติ
+          echo "$PWD/venv/bin" >> $GITHUB_PATH
 
       - name: Install Dependencies
         run: |
+          # ตอนนี้ pip คือ pip ของ venv แล้ว (ไม่ต้อง source activate)
+          pip install --upgrade pip
           pip install -r requirements.txt
           pip install dvc[s3] python-dotenv
 
@@ -46,54 +50,42 @@ jobs:
           dvc remote modify myremote --local access_key_id ${{ secrets.AWS_ACCESS_KEY_ID }}
           dvc remote modify myremote --local secret_access_key ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           dvc pull
-          # ดึงข้อมูลและโมเดลเก่าลงมาก่อน (สำคัญมากสำหรับการทำ Incremental)
 
-      # --- 2. 🧠 THE BRAIN: LOGIC แยกแยะคำสั่ง ---
+      # --- 2. 🧠 THE BRAIN: LOGIC เหมือนเดิมเป๊ะ ---
       - name: Analyze Tag & Execute Pipeline
         run: |
-          # ตัดคำนำหน้า refs/tags/ ออก
           TAG_NAME=${GITHUB_REF#refs/tags/}
           echo "🏷️ Detected Tag: $TAG_NAME"
 
-          # 1. Check Mode (Major vs Incremental)
           if [[ "$TAG_NAME" == *"major"* ]]; then
             MODE="FULL"
-            echo "🔥 Mode: FULL RETRAINING (Major Update)"
+            echo "🔥 Mode: FULL RETRAINING"
           else
             MODE="INCREMENTAL"
-            echo "⚡ Mode: INCREMENTAL UPDATE (Fast Track)"
+            echo "⚡ Mode: INCREMENTAL UPDATE"
           fi
 
-          # 2. Check Target (Pill vs Box vs Both)
           if [[ "$TAG_NAME" == *"pill"* ]]; then
             TARGET="PILL"
-            echo "🎯 Target: PILL ONLY"
           elif [[ "$TAG_NAME" == *"box"* ]]; then
             TARGET="BOX"
-            echo "🎯 Target: BOX ONLY"
           else
             TARGET="BOTH"
-            echo "🎯 Target: BOTH (Pill & Box)"
           fi
-
+          
+          echo "🎯 Target: $TARGET"
           echo "----------------------------------------"
 
-          # 3. EXECUTION LOGIC
-          
           # === PILL PIPELINE ===
           if [[ "$TARGET" == "PILL" ]] || [[ "$TARGET" == "BOTH" ]]; then
             echo "💊 Processing PILL model..."
             if [[ "$MODE" == "INCREMENTAL" ]]; then
-               # แบบเร็ว: Augment -> ข้าม Train Base -> Finetune -> Evaluate
                dvc repro augment_pill
                dvc commit train_pill
                dvc repro evaluate_pill
             else
-               # แบบเต็ม: รันทุกขั้นตอนใหม่หมด
                dvc repro train_pill 
             fi
-          else
-            echo "⏩ Skipping PILL model..."
           fi
 
           # === BOX PIPELINE ===
@@ -106,8 +98,6 @@ jobs:
             else
                dvc repro train_box
             fi
-          else
-             echo "⏩ Skipping BOX model..."
           fi
 
       # --- 3. DEPLOYMENT PHASE ---
@@ -117,14 +107,11 @@ jobs:
           AWS_REGION: ${{ secrets.AWS_REGION }}
         run: |
           VERSION=${GITHUB_REF#refs/tags/}
-          
-          # Clean version name (remove prefixes for folder name)
           CLEAN_VERSION=$(echo $VERSION | sed 's/major-//' | sed 's/pill-//' | sed 's/box-//')
           
           echo "🚀 Deploying version $CLEAN_VERSION..."
           
-          # Script นี้จะแพ็คโมเดลล่าสุด (ทั้งใหม่และเก่า) ขึ้น S3
           python src/deploy.py \
             --version $CLEAN_VERSION \
             --path experiments/arcface_finetuned \
-            --note "Automated Deploy: $VERSION via GitHub Actions"
+            --note "Deployed via System Python ($VERSION)"
