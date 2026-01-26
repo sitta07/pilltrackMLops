@@ -1,0 +1,123 @@
+name: PillTrack MLOps Pipeline 💊
+
+on:
+  push:
+    tags:
+      - 'v*'          # Catch all tags starting with v
+      - 'pill-v*'     # Specific for Pill
+      - 'box-v*'      # Specific for Box
+      - 'major-*'     # Catch all major updates
+
+jobs:
+  train-and-deploy:
+    name: Smart Training Pipeline
+    runs-on: self-hosted
+    
+    steps:
+      # --- 1. SETUP PHASE (เหมือนเดิม) ---
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Install Dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install dvc[s3] python-dotenv
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: DVC Pull Data
+        run: |
+          dvc remote modify myremote --local access_key_id ${{ secrets.AWS_ACCESS_KEY_ID }}
+          dvc remote modify myremote --local secret_access_key ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          dvc pull
+          # ⚠️ ดึงข้อมูลและโมเดลเก่าลงมาก่อน เผื่ออันไหนไม่เทรน จะได้ใช้ของเดิม
+
+      # --- 2. 🧠 THE BRAIN: LOGIC แยกแยะคำสั่ง ---
+      - name: Analyze Tag & Execute Pipeline
+        run: |
+          # ตัดคำว่า refs/tags/ ออก ให้เหลือแค่ชื่อ Tag
+          TAG_NAME=${GITHUB_REF#refs/tags/}
+          echo "🏷️ Detected Tag: $TAG_NAME"
+
+          # 1. Check Mode (Major vs Incremental)
+          if [[ "$TAG_NAME" == *"major"* ]]; then
+            MODE="FULL"
+            echo "🔥 Mode: FULL RETRAINING (Major Update)"
+          else
+            MODE="INCREMENTAL"
+            echo "⚡ Mode: INCREMENTAL UPDATE (Fast Track)"
+          fi
+
+          # 2. Check Target (Pill vs Box vs Both)
+          if [[ "$TAG_NAME" == *"pill"* ]]; then
+            TARGET="PILL"
+            echo "🎯 Target: PILL ONLY"
+          elif [[ "$TAG_NAME" == *"box"* ]]; then
+            TARGET="BOX"
+            echo "🎯 Target: BOX ONLY"
+          else
+            TARGET="BOTH"
+            echo "🎯 Target: BOTH (Pill & Box)"
+          fi
+
+          echo "----------------------------------------"
+
+          # 3. EXECUTION LOGIC
+          
+          # === PILL PIPELINE ===
+          if [[ "$TARGET" == "PILL" ]] || [[ "$TARGET" == "BOTH" ]]; then
+            echo "💊 Processing PILL model..."
+            if [[ "$MODE" == "INCREMENTAL" ]]; then
+               dvc repro augment_pill
+               dvc commit train_pill
+               dvc repro evaluate_pill
+            else
+               dvc repro train_pill # Full chain
+            fi
+          else
+            echo "⏩ Skipping PILL model..."
+          fi
+
+          # === BOX PIPELINE ===
+          if [[ "$TARGET" == "BOX" ]] || [[ "$TARGET" == "BOTH" ]]; then
+            echo "📦 Processing BOX model..."
+            if [[ "$MODE" == "INCREMENTAL" ]]; then
+               dvc repro augment_box
+               dvc commit train_box
+               dvc repro evaluate_box
+            else
+               dvc repro train_box # Full chain
+            fi
+          else
+             echo "⏩ Skipping BOX model..."
+          fi
+
+      # --- 3. DEPLOYMENT PHASE ---
+      - name: Deploy to S3
+        env:
+          S3_BUCKET_NAME: ${{ secrets.S3_BUCKET_NAME }}
+          AWS_REGION: ${{ secrets.AWS_REGION }}
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/}
+          
+          # Clean version name for folder (remove prefixes)
+          CLEAN_VERSION=$(echo $VERSION | sed 's/major-//' | sed 's/pill-//' | sed 's/box-//')
+          
+          echo "🚀 Deploying version $CLEAN_VERSION..."
+          
+          # Deploy Script จะไปกวาดทั้ง Pill และ Box
+          # (อันที่เพิ่งเทรนเสร็จใหม่ + อันเก่าที่ดึงมาจาก dvc pull)
+          python src/deploy.py \
+            --version $CLEAN_VERSION \
+            --path experiments/arcface_finetuned \
+            --note "Automated Deploy: $VERSION"

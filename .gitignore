@@ -53,3 +53,6 @@ infra/*.auto.tfvars
 
 # ไฟล์ log crash
 infra/crash.log
+actions-runner/
+actions-runner/
+actions-runner/
