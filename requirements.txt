@@ -1,0 +1,11 @@
+torch
+torchvision
+dvc[s3]
+pandas
+numpy
+scikit-learn
+opencv-python
+timm
+python-dotenv
+pyyaml
+boto3
