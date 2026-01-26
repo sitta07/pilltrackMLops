@@ -73,3 +73,44 @@ python src/inference.py \
 ```
 
 
+## 3. Cloud Data Sync (DVC <-> S3)
+สำหรับการเก็บรักษา Data, Cache และ Model Versioning (Back-up & Share)
+เก็บงานขึ้น Cloud (หลัง Train เสร็จ)
+
+```bash
+dvc push # ส่งไฟล์ข้อมูลและโมเดลทั้งหมดขึ้น S3 (Buckket โซน dvc-store)
+```
+
+ดึงงานจาก Cloud (เปลี่ยนเครื่อง/ทีมงานอื่น)
+
+```bash
+dvc pull # ดึงข้อมูลล่าสุดมาลงเครื่อง
+```
+
+## 4. Production Deployment 
+เมื่อโมเดลผ่านการเทรนและทดสอบแล้ว ใช้คำสั่งนี้เพื่อปล่อยของไปที่ S3 โซน releases (เพื่อให้เครื่องลูกค้าโหลดไปใช้)
+
+⚠️ ข้อควรระวัง:
+
+ตรวจสอบไฟล์ .env ว่าใส่ AWS Key ครบถ้วน
+
+ตรวจสอบว่าในโฟลเดอร์มีไฟล์ best_model.pth และ class_mapping.json ครบทั้ง Pill และ Box
+
+```bash
+python src/deploy.py \
+    --version v1.0.0 \
+    --path experiments/arcface_finetuned \
+    --note "Initial Release: รองรับยา 10 ชนิดแรก"
+```
+
+## 5. Infrastructure Management (Terraform) 
+ใช้สำหรับสร้างหรือแก้ไข S3 Bucket และ IAM User (นานๆ ใช้ที)
+```bash
+cd infra
+
+# ตรวจสอบว่าต้องแก้อะไรบ้าง
+terraform plan
+
+# ลงมือแก้จริง (ต้องยืนยัน yes)
+terraform apply
+```

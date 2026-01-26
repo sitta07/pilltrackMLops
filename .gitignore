@@ -38,3 +38,18 @@ venv/
 # DVC CACHE
 # ===============================
 .dvc/cache
+
+# --- Terraform ---
+# โฟลเดอร์ที่เก็บ Plugin (ไฟล์หนักๆ ไม่เอาขึ้น)
+infra/.terraform/
+
+# ไฟล์ State (สำคัญมาก! ห้ามเอาขึ้น Git เด็ดขาด เพราะมันเก็บ Secret Key พี่ไว้ในนี้แบบ Plain Text)
+infra/*.tfstate
+infra/*.tfstate.backup
+
+# ไฟล์ตัวแปรความลับ (ถ้ามี)
+infra/*.tfvars
+infra/*.auto.tfvars
+
+# ไฟล์ log crash
+infra/crash.log
