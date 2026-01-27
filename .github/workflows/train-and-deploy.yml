@@ -3,16 +3,17 @@ name: PillTrack MLOps Pipeline 💊
 on:
   push:
     tags:
-      - 'v*'          
-      - 'pill-v*'     
-      - 'box-v*'      
-      - 'major-*'     
+      - 'v*'          # Standard versioning
+      - 'pill-v*'     # Specific for Pill
+      - 'box-v*'      # Specific for Box
+      - 'major-*'     # Major updates (Full Retrain)
 
 jobs:
   train-and-deploy:
     name: Smart Training Pipeline
     runs-on: self-hosted
     
+    # ✅ ป้องกัน Python อม Log เพื่อให้ Debug ได้ Real-time
     env:
       PYTHONUNBUFFERED: "1"
 
@@ -27,6 +28,7 @@ jobs:
           if [ ! -d "venv" ]; then
             /opt/homebrew/bin/python3.10 -m venv venv
           fi
+          # บังคับให้ใช้ venv นี้ใน Step ต่อๆ ไป
           echo "$PWD/venv/bin" >> $GITHUB_PATH
 
       - name: Install Dependencies
@@ -55,12 +57,14 @@ jobs:
           TAG_NAME=${GITHUB_REF#refs/tags/}
           echo "🏷️ Detected Tag: $TAG_NAME"
 
+          # ✅ ใช้ Regex เช็ค Mode ให้แม่นยำ (ถ้ามีคำว่า major = เทรนใหม่ทั้งหมด)
           if [[ "$TAG_NAME" =~ "major" ]]; then
             MODE="FULL"
           else
             MODE="INCREMENTAL"
           fi
 
+          # แยกแยะเป้าหมาย
           if [[ "$TAG_NAME" =~ "pill" ]]; then
             TARGET="PILL"
           elif [[ "$TAG_NAME" =~ "box" ]]; then
@@ -72,14 +76,17 @@ jobs:
           echo "🚀 Mode: $MODE | Target: $TARGET"
           echo "----------------------------------------"
 
+          # ✅ ปลดล็อกกุญแจ Git ก่อนเริ่ม (แก้ปัญหา dvc commit error)
           git rm -r --cached experiments/ || true
 
           # === 💊 PILL PIPELINE ===
           if [[ "$TARGET" == "PILL" ]] || [[ "$TARGET" == "BOTH" ]]; then
             echo "💊 Processing PILL model..."
             if [[ "$MODE" == "FULL" ]]; then
+               # เรียก evaluate_base (ซึ่งจะไปดึง train มาเอง) และใช้ -f เพื่อบังคับรันใหม่
                dvc repro evaluate_base_pill -f
             else
+               # Incremental Mode: augment -> evaluate (ซึ่งจะไปดึง finetune มาเอง)
                dvc repro augment_pill && dvc repro evaluate_pill
             fi
           fi
@@ -96,11 +103,11 @@ jobs:
 
       # --- 3. 🚀 DEPLOYMENT PHASE (Fixed Bucket Arg) ---
       - name: Deploy to S3
-        # env: S3_BUCKET_NAME: ... (ไม่ต้องใช้ตรงนี้แล้ว ส่งผ่าน arg แทน)
         run: |
           VERSION=${GITHUB_REF#refs/tags/}
           CLEAN_VERSION=$(echo $VERSION | sed 's/major-//' | sed 's/pill-//' | sed 's/box-//')
           
+          # เลือก Base Folder ให้ถูกที่ (ถ้า major จะอยู่ใน lite_v1)
           if [[ "$VERSION" =~ "major" ]]; then
              BASE_PATH="experiments/arcface_lite_v1"
           else
@@ -109,19 +116,30 @@ jobs:
 
           echo "📂 Deploying from: $BASE_PATH"
 
-          # ✅ ส่ง --bucket ${{ secrets.S3_BUCKET_NAME }} เข้าไปตรงๆ เลย
+          # ✅ Capture Bucket Name from Secrets
+          BUCKET="${{ secrets.S3_BUCKET_NAME }}"
+          
+          # Validation: เช็คว่าค่าว่างไหม
+          if [ -z "$BUCKET" ]; then
+            echo "❌ CRITICAL ERROR: Secret S3_BUCKET_NAME is empty!"
+            exit 1
+          fi
+
+          # ✅ ส่ง --bucket พร้อมครอบ Quote กันเหนียว
           if [ -d "$BASE_PATH/box" ]; then
+            echo "📦 Deploying BOX..."
             python src/deploy.py \
-              --version $CLEAN_VERSION \
-              --path $BASE_PATH \
+              --version "$CLEAN_VERSION" \
+              --path "$BASE_PATH" \
               --type box \
-              --bucket ${{ secrets.S3_BUCKET_NAME }}
+              --bucket "$BUCKET"
           fi
 
           if [ -d "$BASE_PATH/pill" ]; then
+            echo "💊 Deploying PILL..."
             python src/deploy.py \
-              --version $CLEAN_VERSION \
-              --path $BASE_PATH \
+              --version "$CLEAN_VERSION" \
+              --path "$BASE_PATH" \
               --type pill \
-              --bucket ${{ secrets.S3_BUCKET_NAME }}
+              --bucket "$BUCKET"
           fi
