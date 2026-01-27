@@ -3,17 +3,16 @@ name: PillTrack MLOps Pipeline 💊
 on:
   push:
     tags:
-      - 'v*'          # Standard versioning
-      - 'pill-v*'     # Specific for Pill
-      - 'box-v*'      # Specific for Box
-      - 'major-*'     # Major updates (Full Retrain)
+      - 'v*'          
+      - 'pill-v*'     
+      - 'box-v*'      
+      - 'major-*'     
 
 jobs:
   train-and-deploy:
     name: Smart Training Pipeline
     runs-on: self-hosted
     
-    # ✅ ป้องกัน Python อม Log เพื่อให้ Debug บน GitHub Actions ได้ Real-time
     env:
       PYTHONUNBUFFERED: "1"
 
@@ -28,14 +27,12 @@ jobs:
           if [ ! -d "venv" ]; then
             /opt/homebrew/bin/python3.10 -m venv venv
           fi
-          # บังคับให้ใช้ venv นี้ใน Step ต่อๆ ไป
           echo "$PWD/venv/bin" >> $GITHUB_PATH
 
       - name: Install Dependencies
         run: |
           pip install --upgrade pip
           pip install -r requirements.txt
-          # ✅ ติดตั้ง Library ที่จำเป็นสำหรับการถอนพื้นหลังและ DVC S3
           pip install dvc[s3] python-dotenv transparent-background
 
       - name: Configure AWS Credentials
@@ -47,7 +44,6 @@ jobs:
 
       - name: DVC Pull Data
         run: |
-          # ตั้งค่า Local Remote เพื่อดึงของจาก S3
           dvc remote modify myremote --local access_key_id ${{ secrets.AWS_ACCESS_KEY_ID }}
           dvc remote modify myremote --local secret_access_key ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           echo "⏳ Pulling RAW DATA from S3..."
@@ -59,17 +55,17 @@ jobs:
           TAG_NAME=${GITHUB_REF#refs/tags/}
           echo "🏷️ Detected Tag: $TAG_NAME"
 
-          # แยกแยะโหมดการทำงาน
-          if [[ "$TAG_NAME" == *"major"* ]]; then
+          # ✅ ใช้ Regex เช็ค Mode ให้แม่นยำ (ถ้ามีคำว่า major = เทรนใหม่ทั้งหมด)
+          if [[ "$TAG_NAME" =~ "major" ]]; then
             MODE="FULL"
           else
             MODE="INCREMENTAL"
           fi
 
           # แยกแยะเป้าหมาย
-          if [[ "$TAG_NAME" == *"pill"* ]]; then
+          if [[ "$TAG_NAME" =~ "pill" ]]; then
             TARGET="PILL"
-          elif [[ "$TAG_NAME" == *"box"* ]]; then
+          elif [[ "$TAG_NAME" =~ "box" ]]; then
             TARGET="BOX"
           else
             TARGET="BOTH"
@@ -78,39 +74,44 @@ jobs:
           echo "🚀 Mode: $MODE | Target: $TARGET"
           echo "----------------------------------------"
 
-          # บังคับเลิกติดตาม experiments ใน Git ก่อนรัน (ป้องกัน DVC Error)
+          # ✅ ปลดล็อกกุญแจ Git ก่อนเริ่ม (แก้ปัญหา dvc commit error)
           git rm -r --cached experiments/ || true
 
           # === 💊 PILL PIPELINE ===
           if [[ "$TARGET" == "PILL" ]] || [[ "$TARGET" == "BOTH" ]]; then
-            if [[ "$MODE" == "INCREMENTAL" ]]; then
-               dvc repro augment_pill && dvc commit train_pill -f && dvc repro evaluate_pill
-            else
+            echo "💊 Processing PILL model..."
+            if [[ "$MODE" == "FULL" ]]; then
                dvc repro train_pill -f
+               dvc repro evaluate_pill -f
+            else
+               dvc repro augment_pill && dvc repro evaluate_pill
             fi
           fi
 
           # === 📦 BOX PIPELINE ===
           if [[ "$TARGET" == "BOX" ]] || [[ "$TARGET" == "BOTH" ]]; then
-            if [[ "$MODE" == "INCREMENTAL" ]]; then
-               dvc repro augment_box && dvc commit train_box -f && dvc repro evaluate_box
-            else
+            echo "📦 Processing BOX model..."
+            if [[ "$MODE" == "FULL" ]]; then
+               # 🔥 รันเทรนใหม่ทั้งหมด (ไม่ใช้ dvc commit เพราะดึงไฟล์มาสร้างใหม่เอง)
                dvc repro train_box -f
+               dvc repro evaluate_box -f
+            else
+               # ⚡ โหมดอัปเดตข้อมูล (Incremental)
+               dvc repro augment_box && dvc repro evaluate_box
             fi
           fi
 
-      # --- 3. 🚀 DEPLOYMENT PHASE (The Fixed Version) ---
+      # --- 3. 🚀 DEPLOYMENT PHASE ---
       - name: Deploy to S3
         env:
           S3_BUCKET_NAME: ${{ secrets.S3_BUCKET_NAME }}
           AWS_REGION: ${{ secrets.AWS_REGION }}
         run: |
           VERSION=${GITHUB_REF#refs/tags/}
-          # ตัด prefix ออกให้เหลือแค่เลขเวอร์ชันคลีนๆ
           CLEAN_VERSION=$(echo $VERSION | sed 's/major-//' | sed 's/pill-//' | sed 's/box-//')
           
-          # เลือก Base Path ให้ถูกต้องตาม Mode
-          if [[ "$VERSION" == *"major"* ]]; then
+          # เลือก Base Folder ให้ถูกที่ (ถ้า major จะอยู่ใน lite_v1)
+          if [[ "$VERSION" =~ "major" ]]; then
              BASE_PATH="experiments/arcface_lite_v1"
           else
              BASE_PATH="experiments/arcface_finetuned"
@@ -118,15 +119,11 @@ jobs:
 
           echo "📂 Deploying from: $BASE_PATH"
 
-          # ✅ รัน Deploy โดยส่งแค่ Base Path เข้าไป (กัน Path ซ้อนใน deploy.py)
-          # และใช้คำสั่งเช็ค directory ก่อนรันเพื่อป้องกัน Error Missing Files
-          
+          # ✅ ส่งแค่ BASE_PATH เข้าไป และระบุ --type ให้ deploy.py ไปจัดการเอง
           if [ -d "$BASE_PATH/box" ]; then
-            echo "📦 Sending BOX Model to S3..."
             python src/deploy.py --version $CLEAN_VERSION --path $BASE_PATH --type box
           fi
 
           if [ -d "$BASE_PATH/pill" ]; then
-            echo "💊 Sending PILL Model to S3..."
             python src/deploy.py --version $CLEAN_VERSION --path $BASE_PATH --type pill
           fi
