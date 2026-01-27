@@ -55,14 +55,12 @@ jobs:
           TAG_NAME=${GITHUB_REF#refs/tags/}
           echo "🏷️ Detected Tag: $TAG_NAME"
 
-          # ✅ ใช้ Regex เช็ค Mode ให้แม่นยำ (ถ้ามีคำว่า major = เทรนใหม่ทั้งหมด)
           if [[ "$TAG_NAME" =~ "major" ]]; then
             MODE="FULL"
           else
             MODE="INCREMENTAL"
           fi
 
-          # แยกแยะเป้าหมาย
           if [[ "$TAG_NAME" =~ "pill" ]]; then
             TARGET="PILL"
           elif [[ "$TAG_NAME" =~ "box" ]]; then
@@ -74,15 +72,13 @@ jobs:
           echo "🚀 Mode: $MODE | Target: $TARGET"
           echo "----------------------------------------"
 
-          # ✅ ปลดล็อกกุญแจ Git ก่อนเริ่ม (แก้ปัญหา dvc commit error)
           git rm -r --cached experiments/ || true
 
           # === 💊 PILL PIPELINE ===
           if [[ "$TARGET" == "PILL" ]] || [[ "$TARGET" == "BOTH" ]]; then
             echo "💊 Processing PILL model..."
             if [[ "$MODE" == "FULL" ]]; then
-               dvc repro train_pill -f
-               dvc repro evaluate_pill -f
+               dvc repro evaluate_base_pill -f
             else
                dvc repro augment_pill && dvc repro evaluate_pill
             fi
@@ -92,25 +88,19 @@ jobs:
           if [[ "$TARGET" == "BOX" ]] || [[ "$TARGET" == "BOTH" ]]; then
             echo "📦 Processing BOX model..."
             if [[ "$MODE" == "FULL" ]]; then
-               # 🔥 รันเทรนใหม่ทั้งหมด (ไม่ใช้ dvc commit เพราะดึงไฟล์มาสร้างใหม่เอง)
-               dvc repro train_box -f
-               dvc repro evaluate_box -f
+               dvc repro evaluate_base_box -f
             else
-               # ⚡ โหมดอัปเดตข้อมูล (Incremental)
                dvc repro augment_box && dvc repro evaluate_box
             fi
           fi
 
-      # --- 3. 🚀 DEPLOYMENT PHASE ---
+      # --- 3. 🚀 DEPLOYMENT PHASE (Fixed Bucket Arg) ---
       - name: Deploy to S3
-        env:
-          S3_BUCKET_NAME: ${{ secrets.S3_BUCKET_NAME }}
-          AWS_REGION: ${{ secrets.AWS_REGION }}
+        # env: S3_BUCKET_NAME: ... (ไม่ต้องใช้ตรงนี้แล้ว ส่งผ่าน arg แทน)
         run: |
           VERSION=${GITHUB_REF#refs/tags/}
           CLEAN_VERSION=$(echo $VERSION | sed 's/major-//' | sed 's/pill-//' | sed 's/box-//')
           
-          # เลือก Base Folder ให้ถูกที่ (ถ้า major จะอยู่ใน lite_v1)
           if [[ "$VERSION" =~ "major" ]]; then
              BASE_PATH="experiments/arcface_lite_v1"
           else
@@ -119,11 +109,19 @@ jobs:
 
           echo "📂 Deploying from: $BASE_PATH"
 
-          # ✅ ส่งแค่ BASE_PATH เข้าไป และระบุ --type ให้ deploy.py ไปจัดการเอง
+          # ✅ ส่ง --bucket ${{ secrets.S3_BUCKET_NAME }} เข้าไปตรงๆ เลย
           if [ -d "$BASE_PATH/box" ]; then
-            python src/deploy.py --version $CLEAN_VERSION --path $BASE_PATH --type box
+            python src/deploy.py \
+              --version $CLEAN_VERSION \
+              --path $BASE_PATH \
+              --type box \
+              --bucket ${{ secrets.S3_BUCKET_NAME }}
           fi
 
           if [ -d "$BASE_PATH/pill" ]; then
-            python src/deploy.py --version $CLEAN_VERSION --path $BASE_PATH --type pill
+            python src/deploy.py \
+              --version $CLEAN_VERSION \
+              --path $BASE_PATH \
+              --type pill \
+              --bucket ${{ secrets.S3_BUCKET_NAME }}
           fi
