@@ -50,9 +50,9 @@ jobs:
           dvc remote modify myremote --local access_key_id ${{ secrets.AWS_ACCESS_KEY_ID }}
           dvc remote modify myremote --local secret_access_key ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           
-          echo "⏳ Pulling data from S3 (Verbose Mode)..."
-          dvc pull -v --force
-
+          echo "⏳ Pulling ONLY RAW DATA (Avoiding Ghost Files)..."
+          # เจาะจงดึงเฉพาะไฟล์ .dvc ที่มีของจริงใน S3 เท่านั้น
+          dvc pull data/raw_box.dvc data/raw_pill.dvc
       # --- 2. 🧠 THE BRAIN: LOGIC แยกแยะคำสั่ง ---
       - name: Analyze Tag & Execute Pipeline
         run: |
