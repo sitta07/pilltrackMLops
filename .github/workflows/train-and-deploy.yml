@@ -87,7 +87,7 @@ jobs:
             if [[ "$MODE" == "INCREMENTAL" ]]; then
                dvc repro augment_box && dvc commit train_box && dvc repro evaluate_box
             else
-               dvc repro train_box
+               dvc repro train_box -f
             fi
           fi
 
