@@ -45,14 +45,13 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ secrets.AWS_REGION }}
 
-      # ✅ FIX 3: สั่ง DVC ให้พูดเยอะๆ (-v) จะได้รู้ว่าโหลดถึงไหนแล้ว
       - name: DVC Pull Data
         run: |
           dvc remote modify myremote --local access_key_id ${{ secrets.AWS_ACCESS_KEY_ID }}
           dvc remote modify myremote --local secret_access_key ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           
           echo "⏳ Pulling data from S3 (Verbose Mode)..."
-          dvc pull -v
+          dvc pull -v --force
 
       # --- 2. 🧠 THE BRAIN: LOGIC แยกแยะคำสั่ง ---
       - name: Analyze Tag & Execute Pipeline
