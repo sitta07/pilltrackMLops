@@ -66,3 +66,12 @@ infra/crash.log
 actions-runner/
 actions-runner/
 actions-runner/
+
+/experiments/
+/data/processed_box/
+/data/processed_pill/
+/data/dataset_split_box/
+/data/dataset_split_pill/
+/data/dataset_train_final_box/
+/data/dataset_train_final_pill/
+dvc.lockgit push origin main
