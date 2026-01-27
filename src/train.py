@@ -57,8 +57,14 @@ def main():
 
     train_ds = datasets.ImageFolder(args.train_dir, transform=train_tfm)
     val_ds = datasets.ImageFolder(args.val_dir, transform=val_tfm)
+    train_loader = DataLoader(
+        train_ds, 
+        batch_size=cfg['batch_size'], 
+        shuffle=True, 
+        num_workers=cfg.get('num_workers', 0),
+        drop_last=True  
+    )
 
-    train_loader = DataLoader(train_ds, batch_size=cfg['batch_size'], shuffle=True, num_workers=cfg.get('num_workers', 0))
     val_loader = DataLoader(val_ds, batch_size=cfg['batch_size'], shuffle=False, num_workers=cfg.get('num_workers', 0))
 
     # 3. Save Class Mapping (Auto-Generated) 📝
