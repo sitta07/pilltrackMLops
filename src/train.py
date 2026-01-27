@@ -86,7 +86,7 @@ def main():
     optimizer = optim.AdamW(model.parameters(), lr=cfg['lr'], weight_decay=cfg['weight_decay'])
     
     # Scheduler (Optional: ลด LR เมื่อ Loss นิ่ง)
-    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=3, verbose=True)
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=3)
 
     # 6. Training Loop
     best_acc = 0.0
