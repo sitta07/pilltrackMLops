@@ -1,4 +1,4 @@
-# Pill & Box Classification Pipeline Commands
+# Pill & Box Classification Pipeline Manual Commands
 
 รวมคำสั่งสำหรับรัน Pipeline ทั้งหมด ตั้งแต่ Training ไปจนถึง Inference
 ระบบใช้ **DVC** ในการคุม Pipeline และรองรับ **Incremental Learning** (เพิ่มยาใหม่ไม่ต้องเทรนใหม่หมด)
