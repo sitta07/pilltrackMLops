@@ -13,7 +13,6 @@ jobs:
     name: Smart Training Pipeline
     runs-on: self-hosted
     
-    # ✅ FIX 1: บังคับ Python ไม่ให้ "อม Log" (ให้พ่นออกมาทันที)
     env:
       PYTHONUNBUFFERED: "1"
 
@@ -22,21 +21,20 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v3
 
-      # ✅ FIX 2: ใช้ System Python + Venv (แก้ Permission & เร็วขึ้น)
       - name: Setup System Python & Venv
         run: |
-          echo "🐍 Using System Python 3.10..."
-          # สร้าง venv ชื่อ 'venv' (ถ้ายังไม่มี)
-          /opt/homebrew/bin/python3.10 -m venv venv
-          
-          # Add venv path to GitHub Path so next steps use it automatically
+          echo "🐍 Checking System Python 3.10..."
+          if [ ! -d "venv" ]; then
+            /opt/homebrew/bin/python3.10 -m venv venv
+          fi
           echo "$PWD/venv/bin" >> $GITHUB_PATH
 
       - name: Install Dependencies
         run: |
           pip install --upgrade pip
           pip install -r requirements.txt
-          pip install dvc[s3] python-dotenv
+          # ✅ เพิ่ม transparent-background กันเหนียวไว้ที่นี่ด้วย
+          pip install dvc[s3] python-dotenv transparent-background
 
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v2
@@ -49,84 +47,80 @@ jobs:
         run: |
           dvc remote modify myremote --local access_key_id ${{ secrets.AWS_ACCESS_KEY_ID }}
           dvc remote modify myremote --local secret_access_key ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          
           echo "⏳ Pulling ONLY RAW DATA (Avoiding Ghost Files)..."
-          # เจาะจงดึงเฉพาะไฟล์ .dvc ที่มีของจริงใน S3 เท่านั้น
           dvc pull data/raw_box.dvc data/raw_pill.dvc
+
       # --- 2. 🧠 THE BRAIN: LOGIC แยกแยะคำสั่ง ---
       - name: Analyze Tag & Execute Pipeline
         run: |
-          # ตัดคำนำหน้า refs/tags/ ออก
           TAG_NAME=${GITHUB_REF#refs/tags/}
           echo "🏷️ Detected Tag: $TAG_NAME"
 
-          # 1. Check Mode (Major vs Incremental)
+          # 1. Check Mode
           if [[ "$TAG_NAME" == *"major"* ]]; then
             MODE="FULL"
-            echo "🔥 Mode: FULL RETRAINING (Major Update)"
           else
             MODE="INCREMENTAL"
-            echo "⚡ Mode: INCREMENTAL UPDATE (Fast Track)"
           fi
 
-          # 2. Check Target (Pill vs Box vs Both)
+          # 2. Check Target
           if [[ "$TAG_NAME" == *"pill"* ]]; then
             TARGET="PILL"
-            echo "🎯 Target: PILL ONLY"
           elif [[ "$TAG_NAME" == *"box"* ]]; then
             TARGET="BOX"
-            echo "🎯 Target: BOX ONLY"
           else
             TARGET="BOTH"
-            echo "🎯 Target: BOTH (Pill & Box)"
           fi
 
-          echo "----------------------------------------"
-
-          # 3. EXECUTION LOGIC
-          
-          # === PILL PIPELINE ===
+          # 3. EXECUTION
           if [[ "$TARGET" == "PILL" ]] || [[ "$TARGET" == "BOTH" ]]; then
-            echo "💊 Processing PILL model..."
+            echo "💊 Processing PILL..."
             if [[ "$MODE" == "INCREMENTAL" ]]; then
-               dvc repro augment_pill
-               dvc commit train_pill
-               dvc repro evaluate_pill
+               dvc repro augment_pill && dvc commit train_pill && dvc repro evaluate_pill
             else
                dvc repro train_pill 
             fi
-          else
-            echo "⏩ Skipping PILL model..."
           fi
 
-          # === BOX PIPELINE ===
           if [[ "$TARGET" == "BOX" ]] || [[ "$TARGET" == "BOTH" ]]; then
-            echo "📦 Processing BOX model..."
+            echo "📦 Processing BOX..."
             if [[ "$MODE" == "INCREMENTAL" ]]; then
-               dvc repro augment_box
-               dvc commit train_box
-               dvc repro evaluate_box
+               dvc repro augment_box && dvc commit train_box && dvc repro evaluate_box
             else
                dvc repro train_box
             fi
-          else
-             echo "⏩ Skipping BOX model..."
           fi
 
-      # --- 3. DEPLOYMENT PHASE ---
+      # --- 3. 🚀 SMART DEPLOYMENT PHASE ---
       - name: Deploy to S3
         env:
           S3_BUCKET_NAME: ${{ secrets.S3_BUCKET_NAME }}
           AWS_REGION: ${{ secrets.AWS_REGION }}
         run: |
           VERSION=${GITHUB_REF#refs/tags/}
-          
-          # Clean version name
           CLEAN_VERSION=$(echo $VERSION | sed 's/major-//' | sed 's/pill-//' | sed 's/box-//')
           
-          echo "🚀 Deploying version $CLEAN_VERSION..."
+          # 🎯 เลือก Source Path ตาม Mode ที่รัน
+          # ถ้าเป็น Major (Full Retrain) ของจะไปอยู่ที่ lite_v1
+          # ถ้าเป็น Incremental ของจะไปอยู่ที่ finetuned
+          if [[ "$VERSION" == *"major"* ]]; then
+             BASE_PATH="experiments/arcface_lite_v1"
+             echo "📂 Deploying from Base (lite_v1)"
+          else
+             BASE_PATH="experiments/arcface_finetuned"
+             echo "📂 Deploying from Finetuned"
+          fi
+
+          # ✅ Deploy เฉพาะ Target ที่มีไฟล์อยู่จริง (ป้องกัน Error Missing Files)
           
-          python src/deploy.py \
-            --version $CLEAN_VERSION \
-            --path experiments/arcface_finetuned \
-            --note "Deployed via GitHub Actions ($VERSION)"
+          # Check BOX
+          if [ -d "$BASE_PATH/box" ]; then
+            echo "🚀 Deploying BOX version $CLEAN_VERSION..."
+            python src/deploy.py --version $CLEAN_VERSION --path $BASE_PATH/box --note "Auto-deployed BOX ($VERSION)"
+          fi
+
+          # Check PILL
+          if [ -d "$BASE_PATH/pill" ]; then
+            echo "🚀 Deploying PILL version $CLEAN_VERSION..."
+            python src/deploy.py --version $CLEAN_VERSION --path $BASE_PATH/pill --note "Auto-deployed PILL ($VERSION)"
+          fi
