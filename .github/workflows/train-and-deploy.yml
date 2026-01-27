@@ -13,6 +13,7 @@ jobs:
     name: Smart Training Pipeline
     runs-on: self-hosted
     
+    # ✅ ป้องกัน Python อม Log เพื่อให้ Debug บน GitHub Actions ได้ Real-time
     env:
       PYTHONUNBUFFERED: "1"
 
@@ -27,13 +28,14 @@ jobs:
           if [ ! -d "venv" ]; then
             /opt/homebrew/bin/python3.10 -m venv venv
           fi
+          # บังคับให้ใช้ venv นี้ใน Step ต่อๆ ไป
           echo "$PWD/venv/bin" >> $GITHUB_PATH
 
       - name: Install Dependencies
         run: |
           pip install --upgrade pip
           pip install -r requirements.txt
-          # ✅ เพิ่ม transparent-background กันเหนียวไว้ที่นี่ด้วย
+          # ✅ ติดตั้ง Library ที่จำเป็นสำหรับการถอนพื้นหลังและ DVC S3
           pip install dvc[s3] python-dotenv transparent-background
 
       - name: Configure AWS Credentials
@@ -45,25 +47,26 @@ jobs:
 
       - name: DVC Pull Data
         run: |
+          # ตั้งค่า Local Remote เพื่อดึงของจาก S3
           dvc remote modify myremote --local access_key_id ${{ secrets.AWS_ACCESS_KEY_ID }}
           dvc remote modify myremote --local secret_access_key ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          echo "⏳ Pulling ONLY RAW DATA (Avoiding Ghost Files)..."
+          echo "⏳ Pulling RAW DATA from S3..."
           dvc pull data/raw_box.dvc data/raw_pill.dvc
 
-      # --- 2. 🧠 THE BRAIN: LOGIC แยกแยะคำสั่ง ---
+      # --- 2. 🧠 THE BRAIN: EXECUTION LOGIC ---
       - name: Analyze Tag & Execute Pipeline
         run: |
           TAG_NAME=${GITHUB_REF#refs/tags/}
           echo "🏷️ Detected Tag: $TAG_NAME"
 
-          # 1. Check Mode
+          # แยกแยะโหมดการทำงาน
           if [[ "$TAG_NAME" == *"major"* ]]; then
             MODE="FULL"
           else
             MODE="INCREMENTAL"
           fi
 
-          # 2. Check Target
+          # แยกแยะเป้าหมาย
           if [[ "$TAG_NAME" == *"pill"* ]]; then
             TARGET="PILL"
           elif [[ "$TAG_NAME" == *"box"* ]]; then
@@ -72,55 +75,58 @@ jobs:
             TARGET="BOTH"
           fi
 
-          # 3. EXECUTION
+          echo "🚀 Mode: $MODE | Target: $TARGET"
+          echo "----------------------------------------"
+
+          # บังคับเลิกติดตาม experiments ใน Git ก่อนรัน (ป้องกัน DVC Error)
+          git rm -r --cached experiments/ || true
+
+          # === 💊 PILL PIPELINE ===
           if [[ "$TARGET" == "PILL" ]] || [[ "$TARGET" == "BOTH" ]]; then
-            echo "💊 Processing PILL..."
             if [[ "$MODE" == "INCREMENTAL" ]]; then
-               dvc repro augment_pill && dvc commit train_pill && dvc repro evaluate_pill
+               dvc repro augment_pill && dvc commit train_pill -f && dvc repro evaluate_pill
             else
-               dvc repro train_pill 
+               dvc repro train_pill -f
             fi
           fi
 
+          # === 📦 BOX PIPELINE ===
           if [[ "$TARGET" == "BOX" ]] || [[ "$TARGET" == "BOTH" ]]; then
-            echo "📦 Processing BOX..."
             if [[ "$MODE" == "INCREMENTAL" ]]; then
-               dvc repro augment_box && dvc commit train_box && dvc repro evaluate_box
+               dvc repro augment_box && dvc commit train_box -f && dvc repro evaluate_box
             else
                dvc repro train_box -f
             fi
           fi
 
-      # --- 3. 🚀 SMART DEPLOYMENT PHASE ---
+      # --- 3. 🚀 DEPLOYMENT PHASE (The Fixed Version) ---
       - name: Deploy to S3
         env:
           S3_BUCKET_NAME: ${{ secrets.S3_BUCKET_NAME }}
           AWS_REGION: ${{ secrets.AWS_REGION }}
         run: |
           VERSION=${GITHUB_REF#refs/tags/}
+          # ตัด prefix ออกให้เหลือแค่เลขเวอร์ชันคลีนๆ
           CLEAN_VERSION=$(echo $VERSION | sed 's/major-//' | sed 's/pill-//' | sed 's/box-//')
           
-          # 🎯 เลือก Source Path ตาม Mode ที่รัน
-          # ถ้าเป็น Major (Full Retrain) ของจะไปอยู่ที่ lite_v1
-          # ถ้าเป็น Incremental ของจะไปอยู่ที่ finetuned
+          # เลือก Base Path ให้ถูกต้องตาม Mode
           if [[ "$VERSION" == *"major"* ]]; then
              BASE_PATH="experiments/arcface_lite_v1"
-             echo "📂 Deploying from Base (lite_v1)"
           else
              BASE_PATH="experiments/arcface_finetuned"
-             echo "📂 Deploying from Finetuned"
           fi
 
-          # ✅ Deploy เฉพาะ Target ที่มีไฟล์อยู่จริง (ป้องกัน Error Missing Files)
+          echo "📂 Deploying from: $BASE_PATH"
+
+          # ✅ รัน Deploy โดยส่งแค่ Base Path เข้าไป (กัน Path ซ้อนใน deploy.py)
+          # และใช้คำสั่งเช็ค directory ก่อนรันเพื่อป้องกัน Error Missing Files
           
-          # Check BOX
           if [ -d "$BASE_PATH/box" ]; then
-            echo "🚀 Deploying BOX version $CLEAN_VERSION..."
-            python src/deploy.py --version $CLEAN_VERSION --path $BASE_PATH/box --note "Auto-deployed BOX ($VERSION)"
+            echo "📦 Sending BOX Model to S3..."
+            python src/deploy.py --version $CLEAN_VERSION --path $BASE_PATH --type box
           fi
 
-          # Check PILL
           if [ -d "$BASE_PATH/pill" ]; then
-            echo "🚀 Deploying PILL version $CLEAN_VERSION..."
-            python src/deploy.py --version $CLEAN_VERSION --path $BASE_PATH/pill --note "Auto-deployed PILL ($VERSION)"
+            echo "💊 Sending PILL Model to S3..."
+            python src/deploy.py --version $CLEAN_VERSION --path $BASE_PATH --type pill
           fi
