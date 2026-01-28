@@ -73,8 +73,8 @@ stages:
     outs:
     - path: data/dataset_train_final_box
       hash: md5
-      md5: 5b86d8af7fd09eaa39a805f77055fc16.dir
-      size: 53234366
+      md5: 0cc6cc2b8d737449d7d5afb97cc76629.dir
+      size: 53800073
       nfiles: 321
   train_box:
     cmd: python src/train.py --train_dir data/dataset_train_final_box --val_dir 
@@ -88,8 +88,8 @@ stages:
       nfiles: 17
     - path: data/dataset_train_final_box
       hash: md5
-      md5: 5b86d8af7fd09eaa39a805f77055fc16.dir
-      size: 53234366
+      md5: 0cc6cc2b8d737449d7d5afb97cc76629.dir
+      size: 53800073
       nfiles: 321
     - path: src/train.py
       hash: md5
@@ -114,7 +114,7 @@ stages:
     outs:
     - path: experiments/arcface_lite_v1/box
       hash: md5
-      md5: 91e92406342c88d7431c82482337bc23.dir
+      md5: a6ed2683fb5ea8ac704ed882afe793b7.dir
       size: 199566493
       nfiles: 2
   finetune_box:
@@ -124,12 +124,12 @@ stages:
     deps:
     - path: data/dataset_train_final_box
       hash: md5
-      md5: 5b86d8af7fd09eaa39a805f77055fc16.dir
-      size: 53234366
+      md5: 0cc6cc2b8d737449d7d5afb97cc76629.dir
+      size: 53800073
       nfiles: 321
     - path: experiments/arcface_lite_v1/box/best_model.pth
       hash: md5
-      md5: c1122f871b1af8e1243883d44494a56a
+      md5: e38b595ce8728537b83eb77cf3c776d5
       size: 199566324
     - path: src/finetune.py
       hash: md5
@@ -154,7 +154,7 @@ stages:
     outs:
     - path: experiments/arcface_finetuned/box
       hash: md5
-      md5: c5a6737ab7074acb50dcd1ea02c37090.dir
+      md5: 071e81274d332f751ddb7fd2b254a9df.dir
       size: 199566493
       nfiles: 2
   evaluate_box:
@@ -169,7 +169,7 @@ stages:
       nfiles: 10
     - path: experiments/arcface_finetuned/box/best_model.pth
       hash: md5
-      md5: a2daa5b1a129bc386d3cb03512125446
+      md5: b32eb28f416c0cf3d796a45da4ea6407
       size: 199566324
     - path: src/evaluate.py
       hash: md5
