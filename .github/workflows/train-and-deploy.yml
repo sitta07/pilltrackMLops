@@ -3,11 +3,11 @@ name: PillTrack MLOps Pipeline 💊
 on:
   push:
     tags:
-      - 'v*'          # เวอร์ชันทั่วไป
-      - 'pill-*'      # เพิ่มยาเม็ด (Incremental)
-      - 'box-*'       # เพิ่มกล่องยา (Incremental)
-      - 'major-pill-*' # เทรนใหญ่ยาเม็ด (Full Train)
-      - 'major-box-*'  # เทรนใหญ่กล่องยา (Full Train)
+      - 'v*'
+      - 'pill-*'
+      - 'box-*'
+      - 'major-pill-*'
+      - 'major-box-*'
 
 jobs:
   train-and-deploy:
@@ -20,12 +20,11 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v3
 
-      # ✅ Step 1: เชื่อมท่อข้อมูล (Symlink) ให้ Runner เห็นรูปในเครื่องพี่
+      # ✅ [Senior Link] เชื่อมท่อข้อมูลจากเครื่องพี่เข้า Runner
       - name: 🔗 Link Local Dataset to Runner
         run: |
-          echo "🔗 Connecting local images to runner's workspace..."
+          echo "🔗 Connecting local images..."
           mkdir -p data
-          # แก้ Path ตรงนี้ให้เป็นที่อยู่ที่พี่เก็บรูปจริงใน MacBook นะครับ
           ln -sfn /Users/sittasahathum/Desktop/pilltrackMLops/data/raw_box ./data/raw_box
           ln -sfn /Users/sittasahathum/Desktop/pilltrackMLops/data/raw_pill ./data/raw_pill
           echo "✅ Dataset linked!"
@@ -35,11 +34,10 @@ jobs:
           if [ ! -d "venv" ]; then /opt/homebrew/bin/python3.10 -m venv venv; fi
           echo "$PWD/venv/bin" >> $GITHUB_PATH
 
-      # ✅ Step 2: ติดตั้ง Pillow เพื่อแก้ปัญหา ModuleNotFoundError: No module named 'PIL'
+      # ✅ [Fix] แยกชื่อ Library ให้ถูกต้องและเว้นวรรคให้ชัดเจน
       - name: Install Dependencies
         run: |
           python -m pip install --upgrade pip
-          # บังคับติดตั้ง Pillow และ Library ที่จำเป็นสำหรับการจัดการรูปภาพ
           pip install Pillow transparent-background
           pip install -r requirements.txt
           pip install "dvc[s3]>=3.0" python-dotenv
@@ -56,15 +54,13 @@ jobs:
           dvc remote modify myremote --local access_key_id ${{ secrets.AWS_ACCESS_KEY_ID }}
           dvc remote modify myremote --local secret_access_key ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           echo "📥 Pulling models from S3..."
-          dvc pull experiments/ metrics/ --force || echo "⚠️ No models found on S3."
+          dvc pull experiments/ metrics/ --force || echo "⚠️ No models on S3 yet."
 
-      # ✅ Step 3: รัน Pipeline ตามโหมดที่พี่ยิง Tag เข้ามา
       - name: Run Pipeline
         run: |
           TAG_NAME=${GITHUB_REF#refs/tags/}
           echo "🏷️ Running: $TAG_NAME"
 
-          # Logic แยก Box/Pill และ Major/Incremental
           if [[ "$TAG_NAME" =~ "box" ]]; then
             if [[ "$TAG_NAME" =~ "major" ]]; then
               dvc repro train_box -f
@@ -81,7 +77,6 @@ jobs:
             fi
           fi
 
-      # ✅ Step 4: ส่งเฉพาะผลลัพธ์ขึ้น S3 (รูปภาพจะถูกข้ามตาม dvc.yaml)
       - name: Push Artifacts
         run: |
           echo "☁️ Uploading Models to S3..."
