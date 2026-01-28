@@ -3,11 +3,11 @@ name: PillTrack MLOps Pipeline 💊
 on:
   push:
     tags:
-      - 'v*'          # แท็กเวอร์ชันทั่วไป
-      - 'pill-*'      # เพิ่มยาเม็ดใหม่ (Incremental)
-      - 'box-*'       # เพิ่มกล่องยาใหม่ (Incremental)
-      - 'major-pill-*' # เทรนใหญ่ยาเม็ด (Major Update)
-      - 'major-box-*'  # เทรนใหญ่กล่องยา (Major Update)
+      - 'v*'          # เวอร์ชันทั่วไป
+      - 'pill-*'      # เพิ่มยาเม็ด (Incremental)
+      - 'box-*'       # เพิ่มกล่องยา (Incremental)
+      - 'major-pill-*' # เทรนใหญ่ยาเม็ด (Full Train)
+      - 'major-box-*'  # เทรนใหญ่กล่องยา (Full Train)
 
 jobs:
   train-and-deploy:
@@ -20,22 +20,29 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v3
 
-      # ✅ เชื่อมท่อข้อมูลจาก Project หลักในเครื่องพี่ เข้าสู่ Runner Workspace
+      # ✅ Step 1: เชื่อมท่อข้อมูล (Symlink) ให้ Runner เห็นรูปในเครื่องพี่
       - name: 🔗 Link Local Dataset to Runner
         run: |
-          echo "🔗 Linking local images to runner's workspace..."
+          echo "🔗 Connecting local images to runner's workspace..."
           mkdir -p data
-          # ลบทางลัดเก่า (ถ้ามี) แล้วสร้างใหม่ชี้ไปยังโฟลเดอร์รูปจริงในเครื่องพี่
+          # แก้ Path ตรงนี้ให้เป็นที่อยู่ที่พี่เก็บรูปจริงใน MacBook นะครับ
           ln -sfn /Users/sittasahathum/Desktop/pilltrackMLops/data/raw_box ./data/raw_box
           ln -sfn /Users/sittasahathum/Desktop/pilltrackMLops/data/raw_pill ./data/raw_pill
-          echo "✅ Dataset linked from: /Users/sittasahathum/Desktop/pilltrackMLops/data/"
+          echo "✅ Dataset linked!"
 
-      - name: Setup Venv & Dependencies
+      - name: Setup Venv
         run: |
           if [ ! -d "venv" ]; then /opt/homebrew/bin/python3.10 -m venv venv; fi
           echo "$PWD/venv/bin" >> $GITHUB_PATH
+
+      # ✅ Step 2: ติดตั้ง Pillow เพื่อแก้ปัญหา ModuleNotFoundError: No module named 'PIL'
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          # บังคับติดตั้ง Pillow และ Library ที่จำเป็นสำหรับการจัดการรูปภาพ
+          pip install Pillow transparent-background
           pip install -r requirements.txt
-          pip install "dvc[s3]>=3.0" python-dotenv transparent-background
+          pip install "dvc[s3]>=3.0" python-dotenv
 
       - name: Configure AWS
         uses: aws-actions/configure-aws-credentials@v2
@@ -44,62 +51,48 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ secrets.AWS_REGION }}
 
-      # ✅ ดึงเฉพาะ Model ล่าสุดจาก S3 (ตามคู่มือ Manual Step 3)
       - name: DVC Pull Models
         run: |
           dvc remote modify myremote --local access_key_id ${{ secrets.AWS_ACCESS_KEY_ID }}
           dvc remote modify myremote --local secret_access_key ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           echo "📥 Pulling models from S3..."
-          # ใช้ --force เพื่อดึงโมเดลทับของเดิมใน Workspace
-          dvc pull experiments/ metrics/ --force || echo "⚠️ No models found on S3, starting fresh."
+          dvc pull experiments/ metrics/ --force || echo "⚠️ No models found on S3."
 
-      # ⚙️ Logic การรันอ้างอิงตาม Manual Workflows (BOX & PILL)
-      - name: Run Pipeline based on Manual Guide
+      # ✅ Step 3: รัน Pipeline ตามโหมดที่พี่ยิง Tag เข้ามา
+      - name: Run Pipeline
         run: |
           TAG_NAME=${GITHUB_REF#refs/tags/}
-          echo "🏷️ Tag detected: $TAG_NAME"
+          echo "🏷️ Running: $TAG_NAME"
 
-          # === 📦 BOX LOGIC ===
+          # Logic แยก Box/Pill และ Major/Incremental
           if [[ "$TAG_NAME" =~ "box" ]]; then
             if [[ "$TAG_NAME" =~ "major" ]]; then
-              echo "🔴 Mode: BOX Major Update (Full Train)"
               dvc repro train_box -f
             else
-              echo "🟢 Mode: BOX Incremental Update"
-              dvc repro augment_box  # 1. เตรียมข้อมูล
-              dvc commit train_box   # 2. ล็อค Base Model
-              dvc repro evaluate_box # 3. Finetune & Evaluate
+              dvc repro augment_box && dvc commit train_box && dvc repro evaluate_box
             fi
           fi
 
-          # === 💊 PILL LOGIC ===
           if [[ "$TAG_NAME" =~ "pill" ]]; then
             if [[ "$TAG_NAME" =~ "major" ]]; then
-              echo "🔴 Mode: PILL Major Update (Full Train)"
               dvc repro train_pill -f
             else
-              echo "🟢 Mode: PILL Incremental Update"
-              dvc repro augment_pill  # 1. เตรียมข้อมูล
-              dvc commit train_pill   # 2. ล็อค Base Model
-              dvc repro evaluate_pill # 3. Finetune & Evaluate
+              dvc repro augment_pill && dvc commit train_pill && dvc repro evaluate_pill
             fi
           fi
 
-      # ✅ เก็บงานขึ้น Cloud (Manual Step 3)
-      # หมายเหตุ: dvc push จะอัปโหลดเฉพาะตัวที่ไม่ได้ตั้ง push: false ใน dvc.yaml
-      - name: Push Artifacts to DVC
+      # ✅ Step 4: ส่งเฉพาะผลลัพธ์ขึ้น S3 (รูปภาพจะถูกข้ามตาม dvc.yaml)
+      - name: Push Artifacts
         run: |
-          echo "☁️ Uploading Models & Metrics to S3..."
+          echo "☁️ Uploading Models to S3..."
           dvc push
 
-      # 🚀 Production Deployment (Manual Step 4)
-      - name: Deploy to S3 Releases
+      - name: Deploy
         run: |
           CLEAN_VER=$(echo $TAG_NAME | sed 's/major-//' | sed 's/pill-//' | sed 's/box-//')
-          # เลือก Path ตามโหมด (Major=Base, Normal=Finetuned)
           if [[ "$TAG_NAME" =~ "major" ]]; then PATH_TYPE="arcface_lite_v1"; else PATH_TYPE="arcface_finetuned"; fi
           
           python src/deploy.py \
             --version "$CLEAN_VER" \
             --path "experiments/$PATH_TYPE" \
-            --note "Auto-deployed via CI/CD for $TAG_NAME"
+            --note "Auto-deployed for $TAG_NAME"
