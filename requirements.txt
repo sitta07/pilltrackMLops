@@ -9,4 +9,4 @@ timm
 python-dotenv
 pyyaml
 boto3
-transparent_background
+transparent_backgroundPillow
