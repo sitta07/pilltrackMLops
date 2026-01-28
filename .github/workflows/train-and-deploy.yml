@@ -3,10 +3,11 @@ name: PillTrack MLOps Pipeline 💊
 on:
   push:
     tags:
-      - 'v*'
-      - 'pill-*'
-      - 'box-*'
-      - 'major-*'
+      - 'v*'          # แท็กเวอร์ชันทั่วไป
+      - 'pill-*'      # เพิ่มยาเม็ดใหม่ (Incremental)
+      - 'box-*'       # เพิ่มกล่องยาใหม่ (Incremental)
+      - 'major-pill-*' # เทรนใหญ่ยาเม็ด (Major Update)
+      - 'major-box-*'  # เทรนใหญ่กล่องยา (Major Update)
 
 jobs:
   train-and-deploy:
@@ -19,108 +20,86 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v3
 
-      # ✅ [Senior Step] เชื่อมท่อข้อมูลจากเครื่องพี่เข้าสู่ Runner Workspace
-      # ป้องกัน Error: Input folder not found
+      # ✅ เชื่อมท่อข้อมูลจาก Project หลักในเครื่องพี่ เข้าสู่ Runner Workspace
       - name: 🔗 Link Local Dataset to Runner
         run: |
-          echo "🔗 Linking your local images to Runner's workspace..."
+          echo "🔗 Linking local images to runner's workspace..."
           mkdir -p data
-          # ลบ Folder หรือ Link เก่าทิ้งเพื่อความสะอาด
-          rm -rf ./data/raw_box ./data/raw_pill
-          # สร้าง Symbolic Link จาก Path จริงในเครื่องพี่
+          # ลบทางลัดเก่า (ถ้ามี) แล้วสร้างใหม่ชี้ไปยังโฟลเดอร์รูปจริงในเครื่องพี่
           ln -sfn /Users/sittasahathum/Desktop/pilltrackMLops/data/raw_box ./data/raw_box
           ln -sfn /Users/sittasahathum/Desktop/pilltrackMLops/data/raw_pill ./data/raw_pill
-          echo "✅ Dataset linked successfully"
-          ls -la data/
+          echo "✅ Dataset linked from: /Users/sittasahathum/Desktop/pilltrackMLops/data/"
 
-      - name: Setup System Python & Venv
+      - name: Setup Venv & Dependencies
         run: |
-          if [ ! -d "venv" ]; then
-            /opt/homebrew/bin/python3.10 -m venv venv
-          fi
+          if [ ! -d "venv" ]; then /opt/homebrew/bin/python3.10 -m venv venv; fi
           echo "$PWD/venv/bin" >> $GITHUB_PATH
-
-      - name: Install Dependencies
-        run: |
-          pip install --upgrade pip
           pip install -r requirements.txt
           pip install "dvc[s3]>=3.0" python-dotenv transparent-background
 
-      - name: Configure AWS Credentials
+      - name: Configure AWS
         uses: aws-actions/configure-aws-credentials@v2
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ secrets.AWS_REGION }}
 
-      - name: Nuke Zombie Cache 🧟‍♂️
-        run: |
-          echo "💣 Cleaning up old DVC cache..."
-          rm -rf .dvc/cache .dvc/tmp
-
-      # ✅ Pull เฉพาะ Model จาก S3 (ถ้าไม่มีให้ข้ามไปเทรนใหม่ ไม่ต้องพัง)
-      - name: DVC Pull Models Only
+      # ✅ ดึงเฉพาะ Model ล่าสุดจาก S3 (ตามคู่มือ Manual Step 3)
+      - name: DVC Pull Models
         run: |
           dvc remote modify myremote --local access_key_id ${{ secrets.AWS_ACCESS_KEY_ID }}
           dvc remote modify myremote --local secret_access_key ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          echo "📥 Pulling existing models from S3..."
-          dvc pull experiments/ metrics/ --force || echo "⚠️ No models on S3 yet, will train from scratch."
+          echo "📥 Pulling models from S3..."
+          # ใช้ --force เพื่อดึงโมเดลทับของเดิมใน Workspace
+          dvc pull experiments/ metrics/ --force || echo "⚠️ No models found on S3, starting fresh."
 
-      - name: Run Pipeline
+      # ⚙️ Logic การรันอ้างอิงตาม Manual Workflows (BOX & PILL)
+      - name: Run Pipeline based on Manual Guide
         run: |
           TAG_NAME=${GITHUB_REF#refs/tags/}
-          echo "🏷️ Running with Tag: $TAG_NAME"
-
-          if [[ "$TAG_NAME" =~ "major" ]]; then MODE="FULL"; else MODE="INCREMENTAL"; fi
-          
-          if [[ "$TAG_NAME" =~ "pill" ]]; then TARGET="PILL";
-          elif [[ "$TAG_NAME" =~ "box" ]]; then TARGET="BOX";
-          else TARGET="BOTH"; fi
-
-          git rm -r --cached experiments/ || true
+          echo "🏷️ Tag detected: $TAG_NAME"
 
           # === 📦 BOX LOGIC ===
-          if [[ "$TARGET" == "BOX" ]] || [[ "$TARGET" == "BOTH" ]]; then
-            echo "📦 Processing BOX..."
-            if [[ "$MODE" == "FULL" ]]; then
-               dvc repro evaluate_base_box -f
+          if [[ "$TAG_NAME" =~ "box" ]]; then
+            if [[ "$TAG_NAME" =~ "major" ]]; then
+              echo "🔴 Mode: BOX Major Update (Full Train)"
+              dvc repro train_box -f
             else
-               dvc repro augment_box
-               echo "⏩ Skipping Base Train..."
-               dvc commit train_box
-               dvc repro evaluate_box
+              echo "🟢 Mode: BOX Incremental Update"
+              dvc repro augment_box  # 1. เตรียมข้อมูล
+              dvc commit train_box   # 2. ล็อค Base Model
+              dvc repro evaluate_box # 3. Finetune & Evaluate
             fi
           fi
 
           # === 💊 PILL LOGIC ===
-          if [[ "$TARGET" == "PILL" ]] || [[ "$TARGET" == "BOTH" ]]; then
-            echo "💊 Processing PILL..."
-            if [[ "$MODE" == "FULL" ]]; then
-               dvc repro evaluate_base_pill -f
+          if [[ "$TAG_NAME" =~ "pill" ]]; then
+            if [[ "$TAG_NAME" =~ "major" ]]; then
+              echo "🔴 Mode: PILL Major Update (Full Train)"
+              dvc repro train_pill -f
             else
-               dvc repro augment_pill
-               echo "⏩ Skipping Base Train..."
-               dvc commit train_pill
-               dvc repro evaluate_pill
+              echo "🟢 Mode: PILL Incremental Update"
+              dvc repro augment_pill  # 1. เตรียมข้อมูล
+              dvc commit train_pill   # 2. ล็อค Base Model
+              dvc repro evaluate_pill # 3. Finetune & Evaluate
             fi
           fi
 
-      # ✅ ส่งเฉพาะโมเดลและผลลัพธ์ขึ้น S3 (รูปภาพจะถูกข้ามไปเพราะเราไม่ได้สั่ง push data/)
-      - name: Push Artifacts to DVC Remote
+      # ✅ เก็บงานขึ้น Cloud (Manual Step 3)
+      # หมายเหตุ: dvc push จะอัปโหลดเฉพาะตัวที่ไม่ได้ตั้ง push: false ใน dvc.yaml
+      - name: Push Artifacts to DVC
         run: |
           echo "☁️ Uploading Models & Metrics to S3..."
-          dvc push experiments/ metrics/
+          dvc push
 
-      - name: Deploy to Production
+      # 🚀 Production Deployment (Manual Step 4)
+      - name: Deploy to S3 Releases
         run: |
-          VERSION=${GITHUB_REF#refs/tags/}
-          CLEAN_VERSION=$(echo $VERSION | sed 's/major-//' | sed 's/pill-//' | sed 's/box-//')
-          BUCKET="${{ secrets.S3_BUCKET_NAME }}"
-          if [[ "$VERSION" =~ "major" ]]; then BASE_PATH="experiments/arcface_lite_v1"; else BASE_PATH="experiments/arcface_finetuned"; fi
+          CLEAN_VER=$(echo $TAG_NAME | sed 's/major-//' | sed 's/pill-//' | sed 's/box-//')
+          # เลือก Path ตามโหมด (Major=Base, Normal=Finetuned)
+          if [[ "$TAG_NAME" =~ "major" ]]; then PATH_TYPE="arcface_lite_v1"; else PATH_TYPE="arcface_finetuned"; fi
           
-          if [ -d "$BASE_PATH/box" ]; then
-            python src/deploy.py --version "$CLEAN_VERSION" --path "$BASE_PATH" --type box --bucket "$BUCKET"
-          fi
-          if [ -d "$BASE_PATH/pill" ]; then
-            python src/deploy.py --version "$CLEAN_VERSION" --path "$BASE_PATH" --type pill --bucket "$BUCKET"
-          fi
+          python src/deploy.py \
+            --version "$CLEAN_VER" \
+            --path "experiments/$PATH_TYPE" \
+            --note "Auto-deployed via CI/CD for $TAG_NAME"
