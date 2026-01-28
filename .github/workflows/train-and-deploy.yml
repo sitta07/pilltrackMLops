@@ -70,7 +70,7 @@ jobs:
 
           git rm -r --cached experiments/ || true
 
-          # === 📦 BOX LOGIC (Focus Here!) ===
+          # === 📦 BOX LOGIC ===
           if [[ "$TARGET" == "BOX" ]] || [[ "$TARGET" == "BOTH" ]]; then
             echo "📦 Processing BOX model..."
             if [[ "$MODE" == "FULL" ]]; then
@@ -78,7 +78,7 @@ jobs:
             else
                dvc repro augment_box
                
-               # 👇 บรรทัดนี้ต้องมี!
+               # 👇 บรรทัดนี้แหละที่ต้องมี!
                echo "⏩ Skipping Base Train..."
                dvc commit train_box
                
