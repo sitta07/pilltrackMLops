@@ -3,39 +3,34 @@ name: PillTrack MLOps Pipeline 💊
 on:
   push:
     tags:
-      - 'v*'          # Standard versioning
-      - 'pill-v*'     # Specific for Pill
-      - 'box-v*'      # Specific for Box
-      - 'major-*'     # Major updates (Full Retrain)
+      - 'v*'
+      - 'pill-*'
+      - 'box-*'
+      - 'major-*'
 
 jobs:
   train-and-deploy:
     name: Smart Training Pipeline
     runs-on: self-hosted
-    
-    # ✅ ป้องกัน Python อม Log เพื่อให้ Debug ได้ Real-time
     env:
       PYTHONUNBUFFERED: "1"
 
     steps:
-      # --- 1. SETUP PHASE ---
       - name: Checkout Code
         uses: actions/checkout@v3
 
       - name: Setup System Python & Venv
         run: |
-          echo "🐍 Checking System Python 3.10..."
           if [ ! -d "venv" ]; then
             /opt/homebrew/bin/python3.10 -m venv venv
           fi
-          # บังคับให้ใช้ venv นี้ใน Step ต่อๆ ไป
           echo "$PWD/venv/bin" >> $GITHUB_PATH
 
       - name: Install Dependencies
         run: |
           pip install --upgrade pip
           pip install -r requirements.txt
-          pip install dvc[s3] python-dotenv transparent-background
+          pip install "dvc[s3]>=3.0" python-dotenv transparent-background
 
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v2
@@ -44,102 +39,85 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ secrets.AWS_REGION }}
 
-      - name: DVC Pull Data
+      - name: Nuke Zombie Cache 🧟‍♂️
+        run: |
+          echo "💣 Cleaning up old DVC cache (Keeping Lock file)..."
+          rm -rf .dvc/cache .dvc/tmp
+
+      - name: DVC Pull Data & Models
         run: |
           dvc remote modify myremote --local access_key_id ${{ secrets.AWS_ACCESS_KEY_ID }}
           dvc remote modify myremote --local secret_access_key ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          echo "⏳ Pulling RAW DATA from S3..."
-          dvc pull data/raw_box.dvc data/raw_pill.dvc
+          echo "⏳ Pulling ALL DATA & MODELS..."
+          dvc pull --force
 
-      # --- 2. 🧠 THE BRAIN: EXECUTION LOGIC ---
-      - name: Analyze Tag & Execute Pipeline
+      - name: Run Pipeline (Based on Dev Choice)
         run: |
           TAG_NAME=${GITHUB_REF#refs/tags/}
-          echo "🏷️ Detected Tag: $TAG_NAME"
+          echo "🏷️ Dev Selected Tag: $TAG_NAME"
 
-          # ✅ ใช้ Regex เช็ค Mode ให้แม่นยำ (ถ้ามีคำว่า major = เทรนใหม่ทั้งหมด)
           if [[ "$TAG_NAME" =~ "major" ]]; then
             MODE="FULL"
+            echo "🔴 Mode Selected: FULL TRAIN"
           else
             MODE="INCREMENTAL"
+            echo "🟢 Mode Selected: INCREMENTAL"
           fi
 
-          # แยกแยะเป้าหมาย
-          if [[ "$TAG_NAME" =~ "pill" ]]; then
-            TARGET="PILL"
-          elif [[ "$TAG_NAME" =~ "box" ]]; then
-            TARGET="BOX"
-          else
-            TARGET="BOTH"
-          fi
+          if [[ "$TAG_NAME" =~ "pill" ]]; then TARGET="PILL";
+          elif [[ "$TAG_NAME" =~ "box" ]]; then TARGET="BOX";
+          else TARGET="BOTH"; fi
 
-          echo "🚀 Mode: $MODE | Target: $TARGET"
-          echo "----------------------------------------"
-
-          # ✅ ปลดล็อกกุญแจ Git ก่อนเริ่ม (แก้ปัญหา dvc commit error)
           git rm -r --cached experiments/ || true
 
-          # === 💊 PILL PIPELINE ===
-          if [[ "$TARGET" == "PILL" ]] || [[ "$TARGET" == "BOTH" ]]; then
-            echo "💊 Processing PILL model..."
-            if [[ "$MODE" == "FULL" ]]; then
-               # เรียก evaluate_base (ซึ่งจะไปดึง train มาเอง) และใช้ -f เพื่อบังคับรันใหม่
-               dvc repro evaluate_base_pill -f
-            else
-               # Incremental Mode: augment -> evaluate (ซึ่งจะไปดึง finetune มาเอง)
-               dvc repro augment_pill && dvc repro evaluate_pill
-            fi
-          fi
-
-          # === 📦 BOX PIPELINE ===
+          # === 📦 BOX LOGIC (Focus Here!) ===
           if [[ "$TARGET" == "BOX" ]] || [[ "$TARGET" == "BOTH" ]]; then
             echo "📦 Processing BOX model..."
             if [[ "$MODE" == "FULL" ]]; then
                dvc repro evaluate_base_box -f
             else
-               dvc repro augment_box && dvc repro evaluate_box
+               dvc repro augment_box
+               
+               # 👇 บรรทัดนี้ต้องมี!
+               echo "⏩ Skipping Base Train..."
+               dvc commit train_box
+               
+               dvc repro evaluate_box
             fi
           fi
 
-      # --- 3. 🚀 DEPLOYMENT PHASE (Fixed Bucket Arg) ---
+          # === 💊 PILL LOGIC ===
+          if [[ "$TARGET" == "PILL" ]] || [[ "$TARGET" == "BOTH" ]]; then
+            echo "💊 Processing PILL model..."
+            if [[ "$MODE" == "FULL" ]]; then
+               dvc repro evaluate_base_pill -f
+            else
+               dvc repro augment_pill
+               echo "⏩ Skipping Base Train..."
+               dvc commit train_pill
+               dvc repro evaluate_pill
+            fi
+          fi
+
+      - name: Push Artifacts to DVC Remote
+        run: |
+          echo "☁️ Uploading artifacts to DVC..."
+          dvc push
+
       - name: Deploy to S3
         run: |
           VERSION=${GITHUB_REF#refs/tags/}
           CLEAN_VERSION=$(echo $VERSION | sed 's/major-//' | sed 's/pill-//' | sed 's/box-//')
-          
-          # เลือก Base Folder ให้ถูกที่ (ถ้า major จะอยู่ใน lite_v1)
+          BUCKET="${{ secrets.S3_BUCKET_NAME }}"
           if [[ "$VERSION" =~ "major" ]]; then
              BASE_PATH="experiments/arcface_lite_v1"
           else
              BASE_PATH="experiments/arcface_finetuned"
           fi
-
-          echo "📂 Deploying from: $BASE_PATH"
-
-          # ✅ Capture Bucket Name from Secrets
-          BUCKET="${{ secrets.S3_BUCKET_NAME }}"
           
-          # Validation: เช็คว่าค่าว่างไหม
-          if [ -z "$BUCKET" ]; then
-            echo "❌ CRITICAL ERROR: Secret S3_BUCKET_NAME is empty!"
-            exit 1
-          fi
-
-          # ✅ ส่ง --bucket พร้อมครอบ Quote กันเหนียว
           if [ -d "$BASE_PATH/box" ]; then
-            echo "📦 Deploying BOX..."
-            python src/deploy.py \
-              --version "$CLEAN_VERSION" \
-              --path "$BASE_PATH" \
-              --type box \
-              --bucket "$BUCKET"
+            python src/deploy.py --version "$CLEAN_VERSION" --path "$BASE_PATH" --type box --bucket "$BUCKET"
           fi
-
           if [ -d "$BASE_PATH/pill" ]; then
-            echo "💊 Deploying PILL..."
-            python src/deploy.py \
-              --version "$CLEAN_VERSION" \
-              --path "$BASE_PATH" \
-              --type pill \
-              --bucket "$BUCKET"
+            python src/deploy.py --version "$CLEAN_VERSION" --path "$BASE_PATH" --type pill --bucket "$BUCKET"
           fi

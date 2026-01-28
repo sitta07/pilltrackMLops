@@ -1,6 +1,6 @@
 outs:
-- md5: dc21a43ec607723cd1292aa0892ba035.dir
-  size: 3890934
-  nfiles: 72
+- md5: 11ff3c195a80868f4e7de0062e1a9bea.dir
+  size: 7360362
+  nfiles: 123
   hash: md5
   path: raw_box
