@@ -12,13 +12,26 @@ jobs:
   train-and-deploy:
     name: Smart Training Pipeline
     runs-on: self-hosted
-    
     env:
       PYTHONUNBUFFERED: "1"
 
     steps:
       - name: Checkout Code
         uses: actions/checkout@v3
+
+      # ✅ [Senior Step] เชื่อมท่อข้อมูลจากเครื่องพี่เข้าสู่ Runner Workspace
+      # ป้องกัน Error: Input folder not found
+      - name: 🔗 Link Local Dataset to Runner
+        run: |
+          echo "🔗 Linking your local images to Runner's workspace..."
+          mkdir -p data
+          # ลบ Folder หรือ Link เก่าทิ้งเพื่อความสะอาด
+          rm -rf ./data/raw_box ./data/raw_pill
+          # สร้าง Symbolic Link จาก Path จริงในเครื่องพี่
+          ln -sfn /Users/sittasahathum/Desktop/pilltrackMLops/data/raw_box ./data/raw_box
+          ln -sfn /Users/sittasahathum/Desktop/pilltrackMLops/data/raw_pill ./data/raw_pill
+          echo "✅ Dataset linked successfully"
+          ls -la data/
 
       - name: Setup System Python & Venv
         run: |
@@ -40,41 +53,36 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ secrets.AWS_REGION }}
 
-      - name: Nuke Cache
+      - name: Nuke Zombie Cache 🧟‍♂️
         run: |
           echo "💣 Cleaning up old DVC cache..."
           rm -rf .dvc/cache .dvc/tmp
 
-      # ✅ Senior Fix: พยายามดึงเฉพาะโมเดล ถ้าไม่มีก็ไม่เป็นไร (เพราะจะเทรนใหม่/ใช้ของในเครื่อง)
+      # ✅ Pull เฉพาะ Model จาก S3 (ถ้าไม่มีให้ข้ามไปเทรนใหม่ ไม่ต้องพัง)
       - name: DVC Pull Models Only
         run: |
           dvc remote modify myremote --local access_key_id ${{ secrets.AWS_ACCESS_KEY_ID }}
           dvc remote modify myremote --local secret_access_key ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          echo "📥 Attempting to pull models (Allowed to fail if missing on S3)..."
-          # ใช้ || true เพื่อไม่ให้ CI พังถ้าใน S3 ยังไม่มีโมเดลเวอร์ชันนั้น
-          dvc pull experiments/ metrics/ --force || echo "⚠️ Some models missing on S3, using local versions."
+          echo "📥 Pulling existing models from S3..."
+          dvc pull experiments/ metrics/ --force || echo "⚠️ No models on S3 yet, will train from scratch."
 
       - name: Run Pipeline
         run: |
           TAG_NAME=${GITHUB_REF#refs/tags/}
-          echo "🏷️ Tag Selected: $TAG_NAME"
+          echo "🏷️ Running with Tag: $TAG_NAME"
 
-          # 1. เลือกโหมด (Full Train vs Incremental)
           if [[ "$TAG_NAME" =~ "major" ]]; then MODE="FULL"; else MODE="INCREMENTAL"; fi
           
-          # 2. เลือกเป้าหมาย (Pill vs Box)
           if [[ "$TAG_NAME" =~ "pill" ]]; then TARGET="PILL";
           elif [[ "$TAG_NAME" =~ "box" ]]; then TARGET="BOX";
           else TARGET="BOTH"; fi
 
-          # ปลดล็อค Git state ของโฟลเดอร์ผลลัพธ์
           git rm -r --cached experiments/ || true
 
-          # === 📦 BOX EXECUTION ===
+          # === 📦 BOX LOGIC ===
           if [[ "$TARGET" == "BOX" ]] || [[ "$TARGET" == "BOTH" ]]; then
-            echo "📦 Processing BOX Model..."
+            echo "📦 Processing BOX..."
             if [[ "$MODE" == "FULL" ]]; then
-               # บังคับรันใหม่หมด (ใช้ Data ในเครื่องพี่)
                dvc repro evaluate_base_box -f
             else
                dvc repro augment_box
@@ -84,9 +92,9 @@ jobs:
             fi
           fi
 
-          # === 💊 PILL EXECUTION ===
+          # === 💊 PILL LOGIC ===
           if [[ "$TARGET" == "PILL" ]] || [[ "$TARGET" == "BOTH" ]]; then
-            echo "💊 Processing PILL Model..."
+            echo "💊 Processing PILL..."
             if [[ "$MODE" == "FULL" ]]; then
                dvc repro evaluate_base_pill -f
             else
@@ -97,23 +105,18 @@ jobs:
             fi
           fi
 
-      # ✅ เก็บเฉพาะ Model & Metrics ขึ้น S3 (Dataset ปล่อยไว้ที่เครื่องพี่)
+      # ✅ ส่งเฉพาะโมเดลและผลลัพธ์ขึ้น S3 (รูปภาพจะถูกข้ามไปเพราะเราไม่ได้สั่ง push data/)
       - name: Push Artifacts to DVC Remote
         run: |
           echo "☁️ Uploading Models & Metrics to S3..."
           dvc push experiments/ metrics/
 
-      - name: Deploy to Production S3
+      - name: Deploy to Production
         run: |
           VERSION=${GITHUB_REF#refs/tags/}
           CLEAN_VERSION=$(echo $VERSION | sed 's/major-//' | sed 's/pill-//' | sed 's/box-//')
           BUCKET="${{ secrets.S3_BUCKET_NAME }}"
-          
-          if [[ "$VERSION" =~ "major" ]]; then
-             BASE_PATH="experiments/arcface_lite_v1"
-          else
-             BASE_PATH="experiments/arcface_finetuned"
-          fi
+          if [[ "$VERSION" =~ "major" ]]; then BASE_PATH="experiments/arcface_lite_v1"; else BASE_PATH="experiments/arcface_finetuned"; fi
           
           if [ -d "$BASE_PATH/box" ]; then
             python src/deploy.py --version "$CLEAN_VERSION" --path "$BASE_PATH" --type box --bucket "$BUCKET"
