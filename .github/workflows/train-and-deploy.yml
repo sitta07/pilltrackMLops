@@ -31,20 +31,18 @@ jobs:
           TAG=${GITHUB_REF#refs/tags/}
           echo "TAG_NAME=$TAG" >> $GITHUB_ENV
 
-      # ✅ [Universal Path] หา Path เองอัตโนมัติ
+      # ✅ [Universal Path]
       - name: 🔗 Link Local Dataset to Runner (Universal)
         run: |
           TARGET_DATA_PATH="$HOME/Desktop/pilltrackMLops/data"
           echo "🔍 Auto-detecting dataset at: $TARGET_DATA_PATH"
           mkdir -p data
           
-          # Link Box
           if [ -d "$TARGET_DATA_PATH/raw_box" ]; then
              ln -sfn "$TARGET_DATA_PATH/raw_box" ./data/raw_box
              echo "✅ Box Data Linked"
           fi
           
-          # Link Pill
           if [ -d "$TARGET_DATA_PATH/raw_pill" ]; then
             ln -sfn "$TARGET_DATA_PATH/raw_pill" ./data/raw_pill
             echo "✅ Pill Data Linked (raw_pill)"
@@ -75,13 +73,14 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ secrets.AWS_REGION }}
 
-      - name: DVC Pull Models
+      - name: DVC Pull Models (Global)
         run: |
           dvc remote modify myremote --local access_key_id ${{ secrets.AWS_ACCESS_KEY_ID }}
           dvc remote modify myremote --local secret_access_key ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          # ดึงแบบกว้างๆ ไปก่อน
           dvc pull experiments/ metrics/ --force || echo "⚠️ No models on S3 yet."
 
-      # ✅ [Fixed Logic] ใส่ -f เพื่อบังคับข้าม Base Train ทั้ง Box และ Pill
+      # ✅ [Fixed Logic] เพิ่มการดึง Base Model ก่อน Commit
       - name: Run Pipeline
         run: |
           echo "🏷️ Processing Tag: $TAG_NAME"
@@ -93,8 +92,12 @@ jobs:
               dvc repro train_box -f
             else
               echo "🟢 Incremental Box: Finetune Only"
+              
+              # 1. ต้องดึง Base Model มาก่อน ไม่งั้น Commit ไม่ผ่าน! [cite: 2026-01-29]
+              echo "📥 Fetching Base Box Model..."
+              dvc pull experiments/arcface_lite_v1/box --force || echo "⚠️ Base model not found on Cloud!"
+              
               dvc repro augment_box
-              # ใส่ -f บังคับข้ามแม้ Data เปลี่ยน
               dvc commit train_box -f 
               dvc repro evaluate_box
             fi
@@ -107,8 +110,12 @@ jobs:
               dvc repro train_pill -f
             else
               echo "🟢 Incremental Pill: Finetune Only"
+              
+              # 1. ต้องดึง Base Model มาก่อน ไม่งั้น Commit ไม่ผ่าน! [cite: 2026-01-29]
+              echo "📥 Fetching Base Pill Model..."
+              dvc pull experiments/arcface_lite_v1/pill --force || echo "⚠️ Base model not found on Cloud!"
+              
               dvc repro augment_pill
-              # ใส่ -f บังคับข้ามแม้ Data เปลี่ยน
               dvc commit train_pill -f
               
               dvc repro finetune_pill
