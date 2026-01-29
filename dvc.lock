@@ -228,8 +228,8 @@ stages:
     outs:
     - path: data/dataset_train_final_pill
       hash: md5
-      md5: b50fc851fc15a949abc17da2f8f80bab.dir
-      size: 53890866
+      md5: 0a24b0c3c52ad99400a4e6634e3bfc4a.dir
+      size: 54655639
       nfiles: 208
   train_pill:
     cmd: python src/train.py --train_dir data/dataset_train_final_pill --val_dir
@@ -243,8 +243,8 @@ stages:
       nfiles: 8
     - path: data/dataset_train_final_pill
       hash: md5
-      md5: b50fc851fc15a949abc17da2f8f80bab.dir
-      size: 53890866
+      md5: 0a24b0c3c52ad99400a4e6634e3bfc4a.dir
+      size: 54655639
       nfiles: 208
     - path: src/train.py
       hash: md5
@@ -269,6 +269,6 @@ stages:
     outs:
     - path: experiments/arcface_lite_v1/pill
       hash: md5
-      md5: a115531d020459511a43ef6ce2ee6ca8.dir
+      md5: bd600ae753a28de3f34de016ac24f3e5.dir
       size: 199562336
       nfiles: 2
