@@ -18,7 +18,7 @@ jobs:
     runs-on: self-hosted
     env:
       PYTHONUNBUFFERED: "1"
-      # ✅ [Fix Error] ใส่ Token เพื่อแก้ปัญหา Rate Limit / Auth Error
+      # ใส่ Token เพื่อแก้ปัญหา Rate Limit ของ Hugging Face
       HF_TOKEN: ${{ secrets.HF_TOKEN }}
 
     steps:
@@ -33,6 +33,7 @@ jobs:
           TAG=${GITHUB_REF#refs/tags/}
           echo "TAG_NAME=$TAG" >> $GITHUB_ENV
 
+      # ✅ [Universal Path] หา Path เองอัตโนมัติ
       - name: 🔗 Link Local Dataset to Runner (Universal)
         run: |
           TARGET_DATA_PATH="$HOME/Desktop/pilltrackMLops/data"
@@ -77,6 +78,7 @@ jobs:
           dvc remote modify myremote --local secret_access_key ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           dvc pull experiments/ metrics/ --force || echo "⚠️ No models on S3 yet."
 
+      # ✅ [Logic หลัก] แยก Major/Incremental และ Auto-Fetch Base Model
       - name: Run Pipeline
         run: |
           echo "🏷️ Processing Tag: $TAG_NAME"
@@ -114,24 +116,20 @@ jobs:
             fi
           fi
 
-      # ✅ [Permanent Fix] Promote Model: ถ้า Finetune ผ่าน ให้ดันขึ้นเป็น Base Model ใหม่ทันที
-      - name: 🔄 Promote Finetuned to Base Model (Continuous Learning)
+      # ✅ [Continuous Learning] Promote Model: ดัน Finetuned ขึ้นเป็น Base ทันที
+      - name: 🔄 Promote Finetuned to Base Model
         if: success() && !contains(env.TAG_NAME, 'major')
         run: |
           echo "🏆 Promoting Finetuned Model to Base Model..."
           
           # Logic สำหรับ Pill
           if [[ "$TAG_NAME" =~ "pill" ]]; then
-            # Copy ทับ Base Model เดิม
             cp -R experiments/arcface_finetuned/pill/* experiments/arcface_lite_v1/pill/
-            
-            # บอก DVC ให้จำเวอร์ชันใหม่นี้ (เป็นการอัปเดตถาวร)
             dvc add experiments/arcface_lite_v1/pill
-            
-            echo "✅ Pill Model Promoted! Next run will use this 6-class model as base."
+            echo "✅ Pill Model Promoted!"
           fi
           
-          # Logic สำหรับ Box (ถ้ามี)
+          # Logic สำหรับ Box
           if [[ "$TAG_NAME" =~ "box" ]]; then
             cp -R experiments/arcface_finetuned/box/* experiments/arcface_lite_v1/box/
             dvc add experiments/arcface_lite_v1/box
@@ -141,13 +139,17 @@ jobs:
       - name: Push Artifacts to DVC
         run: dvc push
 
+      # ✅ [Fix Error] แก้ git add ให้ไม่พังถ้าหาไฟล์ไม่เจอ
       - name: 🆙 Update Lockfile & Promotion to GitHub
         run: |
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
           
-          # Add ทั้ง Lockfile และไฟล์ .dvc ที่ถูกอัปเดตจากการ Promote
-          git add dvc.lock experiments/arcface_lite_v1/*.dvc
+          # 1. Add dvc.lock (ตัวหลัก)
+          git add dvc.lock
+          
+          # 2. พยายาม Add ไฟล์ .dvc (ถ้ามีจากการ Promote) ถ้าไม่มีให้ข้ามไป (|| true)
+          git add experiments/arcface_lite_v1/*.dvc || true
           
           if git diff --staged --quiet; then
             echo "No changes in dvc.lock"
