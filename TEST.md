@@ -47,4 +47,4 @@ Bash
 git tag box-test-v1.1
 
 # 2. ส่งคำสั่ง
-git push origin box-v1.1
+git push origin box-test-v1.1

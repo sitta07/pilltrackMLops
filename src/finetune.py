@@ -163,7 +163,13 @@ def main():
         indices = range(len(full_dataset))
 
     subset = Subset(full_dataset, indices)
-    loader = DataLoader(subset, batch_size=cfg['batch_size'], shuffle=True)
+    loader = DataLoader(
+            subset, 
+            batch_size=cfg['batch_size'], 
+            shuffle=True, 
+            drop_last=True  # <--- เติมบรรทัดนี้ครับ! เพื่อตัดเศษรูปเดียวทิ้ง
+        )
+        
     logger.info(f"🎯 Fine-tuning on {len(subset)} samples.")
 
     # 5. Fast Training Loop (5 Epochs)
