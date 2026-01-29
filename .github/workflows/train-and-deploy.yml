@@ -9,6 +9,10 @@ on:
       - 'major-pill-*'
       - 'major-box-*'
 
+# ✅ [Senior Fix] เปิดสิทธิ์ให้บอทสามารถเขียนข้อมูลกลับเข้าไปใน Repo ได้ [cite: 2026-01-29]
+permissions:
+  contents: write
+
 jobs:
   train-and-deploy:
     name: Smart Training Pipeline
@@ -20,7 +24,8 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v3
         with:
-          fetch-depth: 0 # ดึงประวัติเพื่อให้ Push กลับได้ไม่มีปัญหา [cite: 2026-01-29]
+          fetch-depth: 0 
+          token: ${{ secrets.GITHUB_TOKEN }} # ใช้ Token ที่มีสิทธิ์ Write [cite: 2026-01-29]
 
       - name: Set Global Environment Variables
         run: |
@@ -80,9 +85,9 @@ jobs:
 
       - name: Push Artifacts to DVC
         run: |
+          echo "☁️ Uploading Models to S3..."
           dvc push
 
-      # ✅ [FIXED] แก้ไขจุด Push Lockfile ให้รองรับสถานะ Detached HEAD [cite: 2026-01-29]
       - name: 🆙 Update Lockfile to GitHub
         run: |
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
@@ -92,7 +97,7 @@ jobs:
             echo "No changes in dvc.lock"
           else
             git commit -m "🆙 update dvc.lock after training [skip ci]"
-            # ระบุ HEAD:main เพื่อบังคับ Push จากสถานะปัจจุบันไปยังกิ่งหลัก [cite: 2026-01-29]
+            # ใช้ HEAD:main เพื่อเลี่ยงปัญหา Detached HEAD [cite: 2026-01-29]
             git push origin HEAD:main
           fi
 
