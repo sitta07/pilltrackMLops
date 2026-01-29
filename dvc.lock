@@ -228,8 +228,8 @@ stages:
     outs:
     - path: data/dataset_train_final_pill
       hash: md5
-      md5: 13362239c0743c0bb6ac9bd40450addb.dir
-      size: 59446739
+      md5: 95a94d1d907a0c22275b3db20be43576.dir
+      size: 53867836
       nfiles: 318
   train_pill:
     cmd: python src/train.py --train_dir data/dataset_train_final_pill --val_dir
@@ -243,8 +243,8 @@ stages:
       nfiles: 15
     - path: data/dataset_train_final_pill
       hash: md5
-      md5: 13362239c0743c0bb6ac9bd40450addb.dir
-      size: 59446739
+      md5: 95a94d1d907a0c22275b3db20be43576.dir
+      size: 53867836
       nfiles: 318
     - path: src/train.py
       hash: md5
@@ -269,7 +269,7 @@ stages:
     outs:
     - path: experiments/arcface_lite_v1/pill
       hash: md5
-      md5: 4e16fb1f7f9ca530aa483dc02b10e61e.dir
+      md5: b1c8aaf6afc5fa99765c7395ba3bf704.dir
       size: 199566472
       nfiles: 2
   finetune_pill:
@@ -279,13 +279,13 @@ stages:
     deps:
     - path: data/dataset_train_final_pill
       hash: md5
-      md5: eba7a1f7d0565862fc50b07ac4294ec6.dir
-      size: 52718455
+      md5: 95a94d1d907a0c22275b3db20be43576.dir
+      size: 53867836
       nfiles: 318
     - path: experiments/arcface_lite_v1/pill/best_model.pth
       hash: md5
-      md5: f6bf35cb9468a2537643cfaba4ef217f
-      size: 199562228
+      md5: e94921986106572f37df09b5f3e30fa6
+      size: 199566324
     - path: src/finetune.py
       hash: md5
       md5: 64c5187bcb82743760bcfe899b3a653a
@@ -309,7 +309,7 @@ stages:
     outs:
     - path: experiments/arcface_finetuned/pill
       hash: md5
-      md5: 280bdf46185410d172c9ac5aba4fee8b.dir
+      md5: b1c8aaf6afc5fa99765c7395ba3bf704.dir
       size: 199566472
       nfiles: 2
   evaluate_pill:
@@ -324,7 +324,7 @@ stages:
       nfiles: 8
     - path: experiments/arcface_finetuned/pill/best_model.pth
       hash: md5
-      md5: 70fc6bc20928f933667725fd16da6a1f
+      md5: 6220fff774c67623b0bd4233dd6a646c
       size: 199566324
     - path: src/evaluate.py
       hash: md5
@@ -333,5 +333,5 @@ stages:
     outs:
     - path: metrics/pill_metrics.json
       hash: md5
-      md5: 13d1519a8ec326a783dc7853d5696880
+      md5: 074e4b67a8f8d86f06d035243797f9dc
       size: 44
