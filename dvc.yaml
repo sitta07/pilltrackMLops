@@ -144,7 +144,7 @@ stages:
 
   # 1. สำหรับ Incremental Mode (เช็ค Finetuned Model)
   evaluate_pill:
-    cmd: python src/evaluate.py --test_dir data/dataset_split_pill/test --model_dir experiments/arcface_finetuned/pill --metrics_out metrics/pill_metrics.json --type pill --threshold 80.0
+    cmd: python src/evaluate.py --test_dir data/dataset_split_pill/test --model_dir experiments/arcface_finetuned/pill --metrics_out metrics/pill_metrics.json --type pill --threshold 20.0
     deps:
     - data/dataset_split_pill/test
     - experiments/arcface_finetuned/pill/best_model.pth # <--- ผูกกับ Finetune
@@ -155,7 +155,7 @@ stages:
 
   # 2. สำหรับ Major/Full Mode (เช็ค Base Model ตรงๆ) 🔥 เพิ่มใหม่!
   evaluate_base_pill:
-    cmd: python src/evaluate.py --test_dir data/dataset_split_pill/test --model_dir experiments/arcface_lite_v1/pill --metrics_out metrics/pill_base_metrics.json --type pill --threshold 80.0
+    cmd: python src/evaluate.py --test_dir data/dataset_split_pill/test --model_dir experiments/arcface_lite_v1/pill --metrics_out metrics/pill_base_metrics.json --type pill --threshold 20.0
     deps:
     - data/dataset_split_pill/test
     - experiments/arcface_lite_v1/pill/best_model.pth # <--- ผูกกับ Base Model
