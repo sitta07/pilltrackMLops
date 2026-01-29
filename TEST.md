@@ -4,19 +4,19 @@
 💊 สำหรับ Pill (ยาเม็ด)
 Bash
 
-# 1. ยิง Tag ที่มีคำว่า "major-pill"
-git tag major-pill-test-v1.1
+# 1. ยิง Tag ที่มีคำว่า "major-pill" [/]
+git tag major-pill-test-v1.1 
 
-# 2. ส่งคำสั่ง
-git push origin major-pill-test-v1.1
+# 2. ส่งคำสั่ง [/]
+git push origin major-pill-test-v1.1 
 📦 สำหรับ Box (กล่องยา)
 Bash
 
-# 1. ยิง Tag ที่มีคำว่า "major-box"l
-git tag major-box-v1.0
+# 1. ยิง Tag ที่มีคำว่า "major-box"
+git tag major-box-test-v1.0
 
 # 2. ส่งคำสั่ง
-git push origin major-box-v1.0
+git push origin major-box-test-v1.0
 
 
 2. 🟢 กรณีเพิ่มยาตัวใหม่ (Incremental / Add Class) (ใช้บ่อยสุด)
