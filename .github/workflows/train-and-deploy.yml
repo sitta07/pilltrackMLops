@@ -9,7 +9,6 @@ on:
       - 'major-pill-*'
       - 'major-box-*'
 
-# ✅ [Senior Fix] เปิดสิทธิ์ให้บอทสามารถเขียนข้อมูลกลับเข้าไปใน Repo ได้ [cite: 2026-01-29]
 permissions:
   contents: write
 
@@ -24,21 +23,43 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v3
         with:
-          fetch-depth: 0 
-          token: ${{ secrets.GITHUB_TOKEN }} # ใช้ Token ที่มีสิทธิ์ Write [cite: 2026-01-29]
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set Global Environment Variables
         run: |
           TAG=${GITHUB_REF#refs/tags/}
           echo "TAG_NAME=$TAG" >> $GITHUB_ENV
 
-      - name: 🔗 Link Local Dataset to Runner
+      # ✅ 1. เชื่อมท่อข้อมูลแบบ Universal (รันเครื่องไหนก็ได้) [cite: 2025-12-05]
+      - name: 🔗 Link Local Dataset to Runner (Universal)
         run: |
-          echo "🔗 Linking local images..."
+          TARGET_DATA_PATH="$HOME/Desktop/pilltrackMLops/data"
+          echo "🔍 Auto-detecting dataset at: $TARGET_DATA_PATH"
+          
           mkdir -p data
-          ln -sfn /Users/sittasahathum/Desktop/pilltrackMLops/data/raw_box ./data/raw_box
-          ln -sfn /Users/sittasahathum/Desktop/pilltrackMLops/data/raw_pill ./data/raw_pill
-          echo "✅ Dataset linked!"
+          
+          # เชื่อมต่อ Box
+          if [ -d "$TARGET_DATA_PATH/raw_box" ]; then
+             ln -sfn "$TARGET_DATA_PATH/raw_box" ./data/raw_box
+             echo "✅ Box Data Linked"
+          else
+             echo "⚠️ Warning: Box data not found at $TARGET_DATA_PATH/raw_box"
+          fi
+          
+          # เชื่อมต่อ Pill (รองรับทั้งชื่อ raw และ raw_pill)
+          if [ -d "$TARGET_DATA_PATH/raw_pill" ]; then
+            ln -sfn "$TARGET_DATA_PATH/raw_pill" ./data/raw_pill
+            echo "✅ Pill Data Linked (found raw_pill)"
+          elif [ -d "$TARGET_DATA_PATH/raw" ]; then
+            ln -sfn "$TARGET_DATA_PATH/raw" ./data/raw_pill
+            echo "✅ Pill Data Linked (found raw)"
+          else
+            echo "❌ ERROR: Could not find pill dataset!"
+            echo "Please ensure your data is at: ~/Desktop/pilltrackMLops/data/raw_pill"
+            exit 1
+          fi
+          ls -la data/
 
       - name: Setup Venv
         run: |
@@ -97,7 +118,6 @@ jobs:
             echo "No changes in dvc.lock"
           else
             git commit -m "🆙 update dvc.lock after training [skip ci]"
-            # ใช้ HEAD:main เพื่อเลี่ยงปัญหา Detached HEAD [cite: 2026-01-29]
             git push origin HEAD:main
           fi
 
@@ -113,3 +133,22 @@ jobs:
             --type "$MODEL_TYPE" \
             --bucket "${{ secrets.S3_BUCKET_NAME }}" \
             --note "Auto-deployed for $TAG_NAME"
+
+      # ✅ [Senior Feature] วาปโมเดลกลับเข้าเครื่อง Dev ของพี่ทันที! [cite: 2025-12-05]
+      - name: ⚡️ Sync Models to Local Dev Workspace
+        run: |
+          # กำหนดเป้าหมายเป็นเครื่อง Dev ของ User ปัจจุบัน
+          DEV_WORKSPACE="$HOME/Desktop/pilltrackMLops"
+          
+          echo "🚀 Teleporting models to: $DEV_WORKSPACE"
+          
+          if [ -d "$DEV_WORKSPACE" ]; then
+            # Copy เฉพาะโฟลเดอร์ experiments (โมเดล) ไปวางทับเลย
+            cp -R experiments/ "$DEV_WORKSPACE/experiments/"
+            cp -R metrics/ "$DEV_WORKSPACE/metrics/" || true
+            
+            echo "✅ DONE! Models are ready in your VS Code."
+            echo "👉 You can run inference immediately without 'dvc pull'."
+          else
+            echo "⚠️ Dev Workspace not found at standard path. Skipping auto-sync."
+          fi
