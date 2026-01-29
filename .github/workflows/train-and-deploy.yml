@@ -20,23 +20,28 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v3
         with:
-          fetch-depth: 0 # เพื่อให้สามารถ push lockfile กลับได้ [cite: 2026-01-29]
+          fetch-depth: 0
 
-      # ✅ บันทึก Tag Name เข้า Environment กลาง [cite: 2026-01-29]
       - name: Set Global Environment Variables
         run: |
           TAG=${GITHUB_REF#refs/tags/}
           echo "TAG_NAME=$TAG" >> $GITHUB_ENV
-          echo "🏷️ Global Tag Set: $TAG"
 
-      # ✅ [Senior Fix] เชื่อมท่อให้ถูกจุด: เปลี่ยนจาก raw_pill เป็น raw ตามโฟลเดอร์จริงในเครื่องพี่ [cite: 2026-01-29]
+      # ✅ [Senior Fix] เชื่อมท่อไปยังตำแหน่งที่รูปภาพ "ควรจะอยู่"
       - name: 🔗 Link Local Dataset to Runner
         run: |
-          echo "🔗 Linking local images..."
+          echo "🔗 Linking local images from MacBook..."
           mkdir -p data
-          # เชื่อมโยงไปยัง Path จริงในเครื่อง MacBook ของพี่
+          # เชื่อม Box
           ln -sfn /Users/sittasahathum/Desktop/pilltrackMLops/data/raw_box ./data/raw_box
-          ln -sfn /Users/sittasahathum/Desktop/pilltrackMLops/data/raw ./data/raw_pill
+          
+          # เชื่อม Pill (รองรับทั้งชื่อ raw_pill และ raw)
+          if [ -d "/Users/sittasahathum/Desktop/pilltrackMLops/data/raw_pill" ]; then
+            ln -sfn /Users/sittasahathum/Desktop/pilltrackMLops/data/raw_pill ./data/raw_pill
+          else
+            ln -sfn /Users/sittasahathum/Desktop/pilltrackMLops/data/raw ./data/raw_pill
+          fi
+          
           echo "✅ Dataset linked!"
           ls -la data/
 
@@ -63,10 +68,8 @@ jobs:
         run: |
           dvc remote modify myremote --local access_key_id ${{ secrets.AWS_ACCESS_KEY_ID }}
           dvc remote modify myremote --local secret_access_key ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          echo "📥 Pulling existing models from S3..."
           dvc pull experiments/ metrics/ --force || echo "⚠️ No models on S3 yet."
 
-      # ✅ รัน Pipeline ตามโหมดที่ยิง Tag มา [cite: 2025-11-11, 2025-12-05]
       - name: Run Pipeline
         run: |
           echo "🏷️ Processing Tag: $TAG_NAME"
@@ -77,7 +80,6 @@ jobs:
               dvc repro augment_box && dvc commit train_box && dvc repro evaluate_box
             fi
           fi
-          
           if [[ "$TAG_NAME" =~ "pill" ]]; then
             if [[ "$TAG_NAME" =~ "major" ]]; then
               dvc repro train_pill -f
@@ -86,13 +88,10 @@ jobs:
             fi
           fi
 
-      # ✅ ส่งโมเดลขึ้น S3 (Cloud Sync) [cite: 2026-01-29]
       - name: Push Artifacts to DVC
         run: |
-          echo "☁️ Uploading Models to S3..."
           dvc push
 
-      # ✅ อัปเดตลายแทงกลับ GitHub เพื่อให้เครื่องพี่ dvc pull ได้เลย [cite: 2026-01-29]
       - name: 🆙 Update Lockfile to GitHub
         run: |
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
@@ -105,7 +104,6 @@ jobs:
             git push origin main
           fi
 
-      # ✅ Deploy ลงถัง Release เพื่อให้ระบบอื่นนำไปใช้ [cite: 2026-01-29]
       - name: Deploy to S3 Releases
         run: |
           CLEAN_VER=$(echo $TAG_NAME | sed 's/major-//' | sed 's/pill-//' | sed 's/box-//')
