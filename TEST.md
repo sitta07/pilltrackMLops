@@ -44,7 +44,7 @@ git push origin pill-test-v1.5
 Bash
 
 # 1. ยิง Tag ที่ขึ้นต้นด้วย "box-" (ห้ามมีคำว่า major)
-git tag box-v1.1
+git tag box-test-v1.1
 
 # 2. ส่งคำสั่ง
 git push origin box-v1.1
