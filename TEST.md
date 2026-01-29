@@ -36,7 +36,7 @@ Bash
 # 1. ยิง Tag ที่ขึ้นต้นด้วย "pill-" (ห้ามมีคำว่า major) [/]
 git tag pill-test-v1.5
 
-# 2. ส่งคำสั่ง [/]
+# 2. ส่งคำสั่ง [/][]
 git push origin pill-test-v1.5
 
 
