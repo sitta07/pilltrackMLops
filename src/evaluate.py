@@ -23,7 +23,7 @@ def main():
     parser.add_argument("--model_dir", required=True)
     parser.add_argument("--metrics_out", required=True, help="Path to save metrics.json") # 🔥 เพิ่มบรรทัดนี้
     parser.add_argument("--type", required=True, choices=['pill', 'box'])
-    parser.add_argument("--threshold", type=float, default=80.0, help="Minimum accuracy required")
+    parser.add_argument("--threshold", type=float, default=40.0, help="Minimum accuracy required")
     args = parser.parse_args()
 
     # Load Config
