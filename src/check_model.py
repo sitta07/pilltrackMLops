@@ -3,7 +3,7 @@ import os
 import datetime
 
 # Path ของโมเดลล่าสุดที่พึ่งรัน Full Train เสร็จ [cite: 2026-01-29]
-MODEL_DIR = "experiments/arcface_lite_v1/pill"
+MODEL_DIR = "experiments/arcface_finetuned/pill"
 MAPPING_FILE = os.path.join(MODEL_DIR, "class_mapping.json")
 MODEL_FILE = os.path.join(MODEL_DIR, "best_model.pth")
 
@@ -14,7 +14,7 @@ def check_latest_model():
     if os.path.exists(MODEL_FILE):
         mtime = os.path.getmtime(MODEL_FILE)
         last_modified = datetime.datetime.fromtimestamp(mtime)
-        print(f"📅 Last Trained: {last_modified.strftime('%Y-%m-%d %H:%M:%S')}")
+        print(f"📅 Last Added: {last_modified.strftime('%Y-%m-%d %H:%M:%S')}")
         
         # เช็คว่าเป็นของวันนี้จริงไหม [cite: 2026-01-29]
         if last_modified.date() == datetime.date(2026, 1, 29):
