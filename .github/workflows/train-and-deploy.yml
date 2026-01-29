@@ -18,6 +18,8 @@ jobs:
     runs-on: self-hosted
     env:
       PYTHONUNBUFFERED: "1"
+      # ✅ [Fix Error] ใส่ Token เพื่อแก้ปัญหา Rate Limit / Auth Error
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
 
     steps:
       - name: Checkout Code
@@ -31,7 +33,6 @@ jobs:
           TAG=${GITHUB_REF#refs/tags/}
           echo "TAG_NAME=$TAG" >> $GITHUB_ENV
 
-      # ✅ [Universal Path]
       - name: 🔗 Link Local Dataset to Runner (Universal)
         run: |
           TARGET_DATA_PATH="$HOME/Desktop/pilltrackMLops/data"
@@ -40,15 +41,12 @@ jobs:
           
           if [ -d "$TARGET_DATA_PATH/raw_box" ]; then
              ln -sfn "$TARGET_DATA_PATH/raw_box" ./data/raw_box
-             echo "✅ Box Data Linked"
           fi
           
           if [ -d "$TARGET_DATA_PATH/raw_pill" ]; then
             ln -sfn "$TARGET_DATA_PATH/raw_pill" ./data/raw_pill
-            echo "✅ Pill Data Linked (raw_pill)"
           elif [ -d "$TARGET_DATA_PATH/raw" ]; then
             ln -sfn "$TARGET_DATA_PATH/raw" ./data/raw_pill
-            echo "✅ Pill Data Linked (raw)"
           else
             echo "❌ ERROR: Pill dataset not found!"
             exit 1
@@ -77,10 +75,8 @@ jobs:
         run: |
           dvc remote modify myremote --local access_key_id ${{ secrets.AWS_ACCESS_KEY_ID }}
           dvc remote modify myremote --local secret_access_key ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          # ดึงแบบกว้างๆ ไปก่อน
           dvc pull experiments/ metrics/ --force || echo "⚠️ No models on S3 yet."
 
-      # ✅ [Fixed Logic] เพิ่มการดึง Base Model ก่อน Commit
       - name: Run Pipeline
         run: |
           echo "🏷️ Processing Tag: $TAG_NAME"
@@ -92,10 +88,8 @@ jobs:
               dvc repro train_box -f
             else
               echo "🟢 Incremental Box: Finetune Only"
-              
-              # 1. ต้องดึง Base Model มาก่อน ไม่งั้น Commit ไม่ผ่าน! [cite: 2026-01-29]
               echo "📥 Fetching Base Box Model..."
-              dvc pull experiments/arcface_lite_v1/box --force || echo "⚠️ Base model not found on Cloud!"
+              dvc pull experiments/arcface_lite_v1/box --force || echo "⚠️ Base model not found!"
               
               dvc repro augment_box
               dvc commit train_box -f 
@@ -110,31 +104,55 @@ jobs:
               dvc repro train_pill -f
             else
               echo "🟢 Incremental Pill: Finetune Only"
-              
-              # 1. ต้องดึง Base Model มาก่อน ไม่งั้น Commit ไม่ผ่าน! [cite: 2026-01-29]
               echo "📥 Fetching Base Pill Model..."
-              dvc pull experiments/arcface_lite_v1/pill --force || echo "⚠️ Base model not found on Cloud!"
+              dvc pull experiments/arcface_lite_v1/pill --force || echo "⚠️ Base model not found!"
               
               dvc repro augment_pill
               dvc commit train_pill -f
-              
               dvc repro finetune_pill
               dvc repro evaluate_pill
             fi
           fi
 
+      # ✅ [Permanent Fix] Promote Model: ถ้า Finetune ผ่าน ให้ดันขึ้นเป็น Base Model ใหม่ทันที
+      - name: 🔄 Promote Finetuned to Base Model (Continuous Learning)
+        if: success() && !contains(env.TAG_NAME, 'major')
+        run: |
+          echo "🏆 Promoting Finetuned Model to Base Model..."
+          
+          # Logic สำหรับ Pill
+          if [[ "$TAG_NAME" =~ "pill" ]]; then
+            # Copy ทับ Base Model เดิม
+            cp -R experiments/arcface_finetuned/pill/* experiments/arcface_lite_v1/pill/
+            
+            # บอก DVC ให้จำเวอร์ชันใหม่นี้ (เป็นการอัปเดตถาวร)
+            dvc add experiments/arcface_lite_v1/pill
+            
+            echo "✅ Pill Model Promoted! Next run will use this 6-class model as base."
+          fi
+          
+          # Logic สำหรับ Box (ถ้ามี)
+          if [[ "$TAG_NAME" =~ "box" ]]; then
+            cp -R experiments/arcface_finetuned/box/* experiments/arcface_lite_v1/box/
+            dvc add experiments/arcface_lite_v1/box
+            echo "✅ Box Model Promoted!"
+          fi
+
       - name: Push Artifacts to DVC
         run: dvc push
 
-      - name: 🆙 Update Lockfile to GitHub
+      - name: 🆙 Update Lockfile & Promotion to GitHub
         run: |
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
-          git add dvc.lock
+          
+          # Add ทั้ง Lockfile และไฟล์ .dvc ที่ถูกอัปเดตจากการ Promote
+          git add dvc.lock experiments/arcface_lite_v1/*.dvc
+          
           if git diff --staged --quiet; then
             echo "No changes in dvc.lock"
           else
-            git commit -m "🆙 update dvc.lock after training [skip ci]"
+            git commit -m "🆙 update models & promote new base model [skip ci]"
             git push origin HEAD:main
           fi
 
