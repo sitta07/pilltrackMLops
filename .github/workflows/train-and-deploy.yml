@@ -19,15 +19,17 @@ jobs:
     steps:
       - name: Checkout Code
         uses: actions/checkout@v3
+        with:
+          fetch-depth: 0 # ดึงประวัติทั้งหมดเพื่อให้ Push กลับได้ไม่มีปัญหา
 
-      # ✅ [Senior Fix 1] บันทึก Tag Name เข้า Environment กลางให้ทุก Step มองเห็น [cite: 2026-01-29]
+      # ✅ เก็บ Tag Name ไว้ใน Environment กลาง [cite: 2026-01-29]
       - name: Set Global Environment Variables
         run: |
           TAG=${GITHUB_REF#refs/tags/}
           echo "TAG_NAME=$TAG" >> $GITHUB_ENV
           echo "🏷️ Global Tag Set: $TAG"
 
-      # ✅ [Senior Link] เชื่อมท่อข้อมูลจากเครื่องหลักเข้า Runner Workspace
+      # ✅ เชื่อมท่อข้อมูลจากเครื่อง MacBook เข้า Runner Workspace [cite: 2026-01-28]
       - name: 🔗 Link Local Dataset to Runner
         run: |
           echo "🔗 Linking local images..."
@@ -62,60 +64,54 @@ jobs:
           echo "📥 Pulling models from S3..."
           dvc pull experiments/ metrics/ --force || echo "⚠️ No models on S3 yet."
 
-      # ✅ [Senior Logic] รันตาม Tag Name ที่ดึงจาก $TAG_NAME [cite: 2025-12-05]
+      # ✅ รัน Pipeline ตามเงื่อนไข BOX/PILL และ Major/Incremental [cite: 2025-11-11, 2025-12-05]
       - name: Run Pipeline
         run: |
           echo "🏷️ Processing Tag: $TAG_NAME"
-
           if [[ "$TAG_NAME" =~ "box" ]]; then
             if [[ "$TAG_NAME" =~ "major" ]]; then
-              echo "🔴 Mode: BOX Major Update"
               dvc repro train_box -f
             else
-              echo "🟢 Mode: BOX Incremental Update"
               dvc repro augment_box && dvc commit train_box && dvc repro evaluate_box
             fi
           fi
-
           if [[ "$TAG_NAME" =~ "pill" ]]; then
             if [[ "$TAG_NAME" =~ "major" ]]; then
-              echo "🔴 Mode: PILL Major Update"
               dvc repro train_pill -f
             else
-              echo "🟢 Mode: PILL Incremental Update"
               dvc repro augment_pill && dvc commit train_pill && dvc repro evaluate_pill
             fi
           fi
 
-      - name: Push Artifacts
+      # ✅ ส่งโมเดลขึ้น S3 (Cloud Sync) [cite: 2026-01-29]
+      - name: Push Artifacts to DVC
         run: |
           echo "☁️ Uploading Models to S3..."
           dvc push
 
-      # ✅ [Senior Fix 2] ใช้ตัวแปรกลาง และระบุ --bucket ให้ครบถ้วน [cite: 2026-01-29]
-      - name: Deploy to S3 Releases
+      # ✅ [Senior Fix] ส่งลายแทง (Lockfile) กลับเข้า GitHub เพื่อให้เครื่องพี่ Pull ต่อได้ [cite: 2026-01-29]
+      - name: 🆙 Update Lockfile to GitHub
         run: |
-          # ดึงเวอร์ชันออกมาจาก Tag
-          CLEAN_VER=$(echo $TAG_NAME | sed 's/major-//' | sed 's/pill-//' | sed 's/box-//')
-          
-          # ตัดสินใจ Path ตามประเภท Tag
-          if [[ "$TAG_NAME" =~ "major" ]]; then 
-            PATH_TYPE="arcface_lite_v1"
-          else 
-            PATH_TYPE="arcface_finetuned"
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          git add dvc.lock
+          if git diff --staged --quiet; then
+            echo "No changes in dvc.lock"
+          else
+            git commit -m "🆙 update dvc.lock after training [skip ci]"
+            git push origin main
           fi
 
-          # ระบุประเภทโมเดล
-          if [[ "$TAG_NAME" =~ "pill" ]]; then 
-            MODEL_TYPE="pill"
-          else 
-            MODEL_TYPE="box"
-          fi
+      # ✅ Deploy ลงถัง Release [cite: 2026-01-29]
+      - name: Deploy to S3 Releases
+        run: |
+          CLEAN_VER=$(echo $TAG_NAME | sed 's/major-//' | sed 's/pill-//' | sed 's/box-//')
+          if [[ "$TAG_NAME" =~ "major" ]]; then PATH_TYPE="arcface_lite_v1"; else PATH_TYPE="arcface_finetuned"; fi
+          if [[ "$TAG_NAME" =~ "pill" ]]; then MODEL_TYPE="pill"; else MODEL_TYPE="box"; fi
           
-          echo "🚀 Deploying $MODEL_TYPE model version $CLEAN_VER from $PATH_TYPE..."
           python src/deploy.py \
             --version "$CLEAN_VER" \
             --path "experiments/$PATH_TYPE" \
             --type "$MODEL_TYPE" \
             --bucket "${{ secrets.S3_BUCKET_NAME }}" \
-            --note "Auto-deployed for $TAG_NAME via GitHub Actions"
+            --note "Auto-deployed for $TAG_NAME"
