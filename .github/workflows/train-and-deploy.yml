@@ -116,7 +116,7 @@ jobs:
             fi
           fi
 
-      # ✅ [Continuous Learning] Promote Model: ดัน Finetuned ขึ้นเป็น Base ทันที
+      # ✅ [Fix Overlaps Error] Promote Model: ใช้ dvc commit แทน dvc add
       - name: 🔄 Promote Finetuned to Base Model
         if: success() && !contains(env.TAG_NAME, 'major')
         run: |
@@ -125,31 +125,31 @@ jobs:
           # Logic สำหรับ Pill
           if [[ "$TAG_NAME" =~ "pill" ]]; then
             cp -R experiments/arcface_finetuned/pill/* experiments/arcface_lite_v1/pill/
-            dvc add experiments/arcface_lite_v1/pill
+            
+            # ใช้ dvc commit เพื่ออัปเดต output ของ stage เดิม (ไม่สร้าง tracking ซ้ำซ้อน)
+            dvc commit train_pill -f
+            
             echo "✅ Pill Model Promoted!"
           fi
           
           # Logic สำหรับ Box
           if [[ "$TAG_NAME" =~ "box" ]]; then
             cp -R experiments/arcface_finetuned/box/* experiments/arcface_lite_v1/box/
-            dvc add experiments/arcface_lite_v1/box
+            dvc commit train_box -f
             echo "✅ Box Model Promoted!"
           fi
 
       - name: Push Artifacts to DVC
         run: dvc push
 
-      # ✅ [Fix Error] แก้ git add ให้ไม่พังถ้าหาไฟล์ไม่เจอ
+      # ✅ [Fix Git Error] ลบการ add *.dvc เพราะเราใช้ commit ลง dvc.lock แล้ว
       - name: 🆙 Update Lockfile & Promotion to GitHub
         run: |
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
           
-          # 1. Add dvc.lock (ตัวหลัก)
+          # Add แค่ dvc.lock ก็พอ เพราะ hash ทุกอย่างรวมอยู่ในนี้แล้ว
           git add dvc.lock
-          
-          # 2. พยายาม Add ไฟล์ .dvc (ถ้ามีจากการ Promote) ถ้าไม่มีให้ข้ามไป (|| true)
-          git add experiments/arcface_lite_v1/*.dvc || true
           
           if git diff --staged --quiet; then
             echo "No changes in dvc.lock"

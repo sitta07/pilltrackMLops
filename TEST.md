@@ -38,6 +38,8 @@ git tag pill-test-v1.1
 
 # 2. ส่งคำสั่ง
 git push origin pill-test-v1.1
+
+
 📦 สำหรับ Box (กล่องยา)
 Bash
 
