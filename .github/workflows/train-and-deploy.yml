@@ -20,40 +20,20 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v3
         with:
-          fetch-depth: 0
+          fetch-depth: 0 # ดึงประวัติเพื่อให้ Push กลับได้ไม่มีปัญหา [cite: 2026-01-29]
 
       - name: Set Global Environment Variables
         run: |
           TAG=${GITHUB_REF#refs/tags/}
           echo "TAG_NAME=$TAG" >> $GITHUB_ENV
 
-      # ✅ [Senior Fix] ตรวจสอบตำแหน่งรูปภาพบน MacBook ก่อนเริ่มงาน [cite: 2026-01-29]
       - name: 🔗 Link Local Dataset to Runner
         run: |
-          echo "🔍 Validating source folders on MacBook..."
-          PILL_SOURCE="/Users/sittasahathum/Desktop/pilltrackMLops/data/raw_pill"
-          BOX_SOURCE="/Users/sittasahathum/Desktop/pilltrackMLops/data/raw_box"
-          
+          echo "🔗 Linking local images..."
           mkdir -p data
-          
-          # เชื่อมต่อ Box
-          if [ -d "$BOX_SOURCE" ]; then
-            ln -sfn "$BOX_SOURCE" ./data/raw_box
-            echo "✅ Box Data Linked"
-          else
-            echo "⚠️ Warning: Box source not found (Skip if training Pill)"
-          fi
-          
-          # เชื่อมต่อ Pill [cite: 2026-01-29]
-          if [ -d "$PILL_SOURCE" ]; then
-            ln -sfn "$PILL_SOURCE" ./data/raw_pill
-            echo "✅ Pill Data Linked"
-          else
-            echo "❌ ERROR: Pill source folder NOT FOUND at $PILL_SOURCE"
-            echo "Please restore the folder to your MacBook first!"
-            exit 1 
-          fi
-          ls -la data/
+          ln -sfn /Users/sittasahathum/Desktop/pilltrackMLops/data/raw_box ./data/raw_box
+          ln -sfn /Users/sittasahathum/Desktop/pilltrackMLops/data/raw_pill ./data/raw_pill
+          echo "✅ Dataset linked!"
 
       - name: Setup Venv
         run: |
@@ -102,6 +82,7 @@ jobs:
         run: |
           dvc push
 
+      # ✅ [FIXED] แก้ไขจุด Push Lockfile ให้รองรับสถานะ Detached HEAD [cite: 2026-01-29]
       - name: 🆙 Update Lockfile to GitHub
         run: |
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
@@ -111,7 +92,8 @@ jobs:
             echo "No changes in dvc.lock"
           else
             git commit -m "🆙 update dvc.lock after training [skip ci]"
-            git push origin main
+            # ระบุ HEAD:main เพื่อบังคับ Push จากสถานะปัจจุบันไปยังกิ่งหลัก [cite: 2026-01-29]
+            git push origin HEAD:main
           fi
 
       - name: Deploy to S3 Releases
