@@ -167,7 +167,7 @@ def main():
             subset, 
             batch_size=cfg['batch_size'], 
             shuffle=True, 
-            drop_last=True  # <--- เติมบรรทัดนี้ครับ! เพื่อตัดเศษรูปเดียวทิ้ง
+            drop_last=True  
         )
         
     logger.info(f"🎯 Fine-tuning on {len(subset)} samples.")
