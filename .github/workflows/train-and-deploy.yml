@@ -27,22 +27,32 @@ jobs:
           TAG=${GITHUB_REF#refs/tags/}
           echo "TAG_NAME=$TAG" >> $GITHUB_ENV
 
-      # ✅ [Senior Fix] เชื่อมท่อไปยังตำแหน่งที่รูปภาพ "ควรจะอยู่"
+      # ✅ [Senior Fix] ตรวจสอบตำแหน่งรูปภาพบน MacBook ก่อนเริ่มงาน [cite: 2026-01-29]
       - name: 🔗 Link Local Dataset to Runner
         run: |
-          echo "🔗 Linking local images from MacBook..."
-          mkdir -p data
-          # เชื่อม Box
-          ln -sfn /Users/sittasahathum/Desktop/pilltrackMLops/data/raw_box ./data/raw_box
+          echo "🔍 Validating source folders on MacBook..."
+          PILL_SOURCE="/Users/sittasahathum/Desktop/pilltrackMLops/data/raw_pill"
+          BOX_SOURCE="/Users/sittasahathum/Desktop/pilltrackMLops/data/raw_box"
           
-          # เชื่อม Pill (รองรับทั้งชื่อ raw_pill และ raw)
-          if [ -d "/Users/sittasahathum/Desktop/pilltrackMLops/data/raw_pill" ]; then
-            ln -sfn /Users/sittasahathum/Desktop/pilltrackMLops/data/raw_pill ./data/raw_pill
+          mkdir -p data
+          
+          # เชื่อมต่อ Box
+          if [ -d "$BOX_SOURCE" ]; then
+            ln -sfn "$BOX_SOURCE" ./data/raw_box
+            echo "✅ Box Data Linked"
           else
-            ln -sfn /Users/sittasahathum/Desktop/pilltrackMLops/data/raw ./data/raw_pill
+            echo "⚠️ Warning: Box source not found (Skip if training Pill)"
           fi
           
-          echo "✅ Dataset linked!"
+          # เชื่อมต่อ Pill [cite: 2026-01-29]
+          if [ -d "$PILL_SOURCE" ]; then
+            ln -sfn "$PILL_SOURCE" ./data/raw_pill
+            echo "✅ Pill Data Linked"
+          else
+            echo "❌ ERROR: Pill source folder NOT FOUND at $PILL_SOURCE"
+            echo "Please restore the folder to your MacBook first!"
+            exit 1 
+          fi
           ls -la data/
 
       - name: Setup Venv
