@@ -3,7 +3,7 @@ import os
 import datetime
 
 # Path ของโมเดลล่าสุดที่พึ่งรัน Full Train เสร็จ [cite: 2026-01-29]
-MODEL_DIR = "experiments/arcface_lite_v1/box"
+MODEL_DIR = "experiments/arcface_lite_v1/pill"
 MAPPING_FILE = os.path.join(MODEL_DIR, "class_mapping.json")
 MODEL_FILE = os.path.join(MODEL_DIR, "best_model.pth")
 

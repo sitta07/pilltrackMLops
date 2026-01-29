@@ -9,6 +9,7 @@ on:
       - 'major-pill-*'
       - 'major-box-*'
 
+# ✅ เปิดสิทธิ์ให้บอท Push Lockfile กลับ GitHub ได้
 permissions:
   contents: write
 
@@ -31,7 +32,7 @@ jobs:
           TAG=${GITHUB_REF#refs/tags/}
           echo "TAG_NAME=$TAG" >> $GITHUB_ENV
 
-      # ✅ 1. เชื่อมท่อข้อมูลแบบ Universal (รันเครื่องไหนก็ได้) [cite: 2025-12-05]
+      # ✅ [Universal Path] รันเครื่องไหนก็ได้โดยไม่ต้องแก้ Path
       - name: 🔗 Link Local Dataset to Runner (Universal)
         run: |
           TARGET_DATA_PATH="$HOME/Desktop/pilltrackMLops/data"
@@ -39,7 +40,7 @@ jobs:
           
           mkdir -p data
           
-          # เชื่อมต่อ Box
+          # Link Box
           if [ -d "$TARGET_DATA_PATH/raw_box" ]; then
              ln -sfn "$TARGET_DATA_PATH/raw_box" ./data/raw_box
              echo "✅ Box Data Linked"
@@ -47,7 +48,7 @@ jobs:
              echo "⚠️ Warning: Box data not found at $TARGET_DATA_PATH/raw_box"
           fi
           
-          # เชื่อมต่อ Pill (รองรับทั้งชื่อ raw และ raw_pill)
+          # Link Pill (รองรับทั้ง raw และ raw_pill)
           if [ -d "$TARGET_DATA_PATH/raw_pill" ]; then
             ln -sfn "$TARGET_DATA_PATH/raw_pill" ./data/raw_pill
             echo "✅ Pill Data Linked (found raw_pill)"
@@ -56,7 +57,6 @@ jobs:
             echo "✅ Pill Data Linked (found raw)"
           else
             echo "❌ ERROR: Could not find pill dataset!"
-            echo "Please ensure your data is at: ~/Desktop/pilltrackMLops/data/raw_pill"
             exit 1
           fi
           ls -la data/
@@ -86,21 +86,30 @@ jobs:
           dvc remote modify myremote --local secret_access_key ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           dvc pull experiments/ metrics/ --force || echo "⚠️ No models on S3 yet."
 
+      # ✅ [Incremental Logic] ปรับให้ Pill เทรนต่อได้แม้ไม่ใช่ Major Tag
       - name: Run Pipeline
         run: |
           echo "🏷️ Processing Tag: $TAG_NAME"
+          
+          # --- BOX Logic ---
           if [[ "$TAG_NAME" =~ "box" ]]; then
             if [[ "$TAG_NAME" =~ "major" ]]; then
               dvc repro train_box -f
             else
+              # Box Minor: แค่ Augment & Evaluate (ไม่เทรนใหม่)
               dvc repro augment_box && dvc commit train_box && dvc repro evaluate_box
             fi
           fi
+          
+          # --- PILL Logic (Updated for New Class) ---
           if [[ "$TAG_NAME" =~ "pill" ]]; then
             if [[ "$TAG_NAME" =~ "major" ]]; then
+              echo "🔴 Mode: PILL Major Update (Force Full Train)"
               dvc repro train_pill -f
             else
-              dvc repro augment_pill && dvc commit train_pill && dvc repro evaluate_pill
+              echo "🟢 Mode: PILL Incremental Update (Train on new data)"
+              # ใช้ dvc repro แทน dvc commit เพื่อให้มันเทรนต่อเมื่อ Data เปลี่ยน (เพิ่ม Class)
+              dvc repro augment_pill && dvc repro train_pill && dvc repro evaluate_pill
             fi
           fi
 
@@ -121,11 +130,22 @@ jobs:
             git push origin HEAD:main
           fi
 
+      # ✅ [Smart Deploy] เลือก Path โมเดลให้อัตโนมัติ
       - name: Deploy to S3 Releases
         run: |
           CLEAN_VER=$(echo $TAG_NAME | sed 's/major-//' | sed 's/pill-//' | sed 's/box-//')
-          if [[ "$TAG_NAME" =~ "major" ]]; then PATH_TYPE="arcface_lite_v1"; else PATH_TYPE="arcface_finetuned"; fi
+          
           if [[ "$TAG_NAME" =~ "pill" ]]; then MODEL_TYPE="pill"; else MODEL_TYPE="box"; fi
+          
+          # ตรวจสอบว่ามีโมเดล Finetuned ไหม? ถ้าไม่มีให้ใช้ Lite_v1 (Main Model)
+          # ทำให้รองรับการเทรน Pill แบบ Minor Tag ได้โดยไม่ Error
+          if [ -d "experiments/arcface_finetuned/$MODEL_TYPE" ]; then
+            PATH_TYPE="arcface_finetuned"
+            echo "📦 Deploying Finetuned Model"
+          else
+            PATH_TYPE="arcface_lite_v1"
+            echo "📦 Deploying Main Model (Lite v1)"
+          fi
           
           python src/deploy.py \
             --version "$CLEAN_VER" \
@@ -134,21 +154,16 @@ jobs:
             --bucket "${{ secrets.S3_BUCKET_NAME }}" \
             --note "Auto-deployed for $TAG_NAME"
 
-      # ✅ [Senior Feature] วาปโมเดลกลับเข้าเครื่อง Dev ของพี่ทันที! [cite: 2025-12-05]
+      # ✅ [Auto-Sync] วาปโมเดลกลับเครื่องพี่ทันที!
       - name: ⚡️ Sync Models to Local Dev Workspace
         run: |
-          # กำหนดเป้าหมายเป็นเครื่อง Dev ของ User ปัจจุบัน
           DEV_WORKSPACE="$HOME/Desktop/pilltrackMLops"
-          
           echo "🚀 Teleporting models to: $DEV_WORKSPACE"
           
           if [ -d "$DEV_WORKSPACE" ]; then
-            # Copy เฉพาะโฟลเดอร์ experiments (โมเดล) ไปวางทับเลย
             cp -R experiments/ "$DEV_WORKSPACE/experiments/"
             cp -R metrics/ "$DEV_WORKSPACE/metrics/" || true
-            
             echo "✅ DONE! Models are ready in your VS Code."
-            echo "👉 You can run inference immediately without 'dvc pull'."
           else
-            echo "⚠️ Dev Workspace not found at standard path. Skipping auto-sync."
+            echo "⚠️ Workspace not found. Skipping sync."
           fi
