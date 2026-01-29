@@ -81,7 +81,7 @@ jobs:
           dvc remote modify myremote --local secret_access_key ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           dvc pull experiments/ metrics/ --force || echo "⚠️ No models on S3 yet."
 
-      # ✅ [Fixed Logic] ทำตาม README เป๊ะๆ
+      # ✅ [Fixed Logic] ใส่ -f เพื่อบังคับข้าม Base Train ทั้ง Box และ Pill
       - name: Run Pipeline
         run: |
           echo "🏷️ Processing Tag: $TAG_NAME"
@@ -93,9 +93,9 @@ jobs:
               dvc repro train_box -f
             else
               echo "🟢 Incremental Box: Finetune Only"
-              # ตาม README ข้อ 1.A
               dvc repro augment_box
-              dvc commit train_box  # <--- Key Magic!
+              # ใส่ -f บังคับข้ามแม้ Data เปลี่ยน
+              dvc commit train_box -f 
               dvc repro evaluate_box
             fi
           fi
@@ -107,11 +107,10 @@ jobs:
               dvc repro train_pill -f
             else
               echo "🟢 Incremental Pill: Finetune Only"
-              # ตาม README ข้อ 2.A เป๊ะๆ!
               dvc repro augment_pill
-              dvc commit train_pill # <--- Key Magic! ห้ามลืมบรรทัดนี้
+              # ใส่ -f บังคับข้ามแม้ Data เปลี่ยน
+              dvc commit train_pill -f
               
-              # สั่ง Finetune ก่อน Evaluate เพื่อความชัวร์ (แม้ใน repro evaluate จะเรียก finetune ก็ตาม)
               dvc repro finetune_pill
               dvc repro evaluate_pill
             fi
@@ -137,7 +136,6 @@ jobs:
           CLEAN_VER=$(echo $TAG_NAME | sed 's/major-//' | sed 's/pill-//' | sed 's/box-//')
           if [[ "$TAG_NAME" =~ "pill" ]]; then MODEL_TYPE="pill"; else MODEL_TYPE="box"; fi
           
-          # เลือก Path ตาม README (ถ้า Major ใช้ Base, ถ้า Minor ใช้ Finetuned)
           if [[ "$TAG_NAME" =~ "major" ]]; then
              PATH_TYPE="arcface_lite_v1"
           else
