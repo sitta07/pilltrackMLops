@@ -9,7 +9,6 @@ on:
       - 'major-pill-*'
       - 'major-box-*'
 
-# ✅ เปิดสิทธิ์ให้บอท Push Lockfile กลับ GitHub ได้
 permissions:
   contents: write
 
@@ -32,34 +31,30 @@ jobs:
           TAG=${GITHUB_REF#refs/tags/}
           echo "TAG_NAME=$TAG" >> $GITHUB_ENV
 
-      # ✅ [Universal Path] รันเครื่องไหนก็ได้โดยไม่ต้องแก้ Path
+      # ✅ [Universal Path] หา Path เองอัตโนมัติ
       - name: 🔗 Link Local Dataset to Runner (Universal)
         run: |
           TARGET_DATA_PATH="$HOME/Desktop/pilltrackMLops/data"
           echo "🔍 Auto-detecting dataset at: $TARGET_DATA_PATH"
-          
           mkdir -p data
           
           # Link Box
           if [ -d "$TARGET_DATA_PATH/raw_box" ]; then
              ln -sfn "$TARGET_DATA_PATH/raw_box" ./data/raw_box
              echo "✅ Box Data Linked"
-          else
-             echo "⚠️ Warning: Box data not found at $TARGET_DATA_PATH/raw_box"
           fi
           
-          # Link Pill (รองรับทั้ง raw และ raw_pill)
+          # Link Pill
           if [ -d "$TARGET_DATA_PATH/raw_pill" ]; then
             ln -sfn "$TARGET_DATA_PATH/raw_pill" ./data/raw_pill
-            echo "✅ Pill Data Linked (found raw_pill)"
+            echo "✅ Pill Data Linked (raw_pill)"
           elif [ -d "$TARGET_DATA_PATH/raw" ]; then
             ln -sfn "$TARGET_DATA_PATH/raw" ./data/raw_pill
-            echo "✅ Pill Data Linked (found raw)"
+            echo "✅ Pill Data Linked (raw)"
           else
-            echo "❌ ERROR: Could not find pill dataset!"
+            echo "❌ ERROR: Pill dataset not found!"
             exit 1
           fi
-          ls -la data/
 
       - name: Setup Venv
         run: |
@@ -86,37 +81,44 @@ jobs:
           dvc remote modify myremote --local secret_access_key ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           dvc pull experiments/ metrics/ --force || echo "⚠️ No models on S3 yet."
 
-      # ✅ [Incremental Logic] ปรับให้ Pill เทรนต่อได้แม้ไม่ใช่ Major Tag
+      # ✅ [Fixed Logic] ทำตาม README เป๊ะๆ
       - name: Run Pipeline
         run: |
           echo "🏷️ Processing Tag: $TAG_NAME"
           
-          # --- BOX Logic ---
+          # --- BOX Workflow ---
           if [[ "$TAG_NAME" =~ "box" ]]; then
             if [[ "$TAG_NAME" =~ "major" ]]; then
+              echo "🔴 Major Box: Full Train"
               dvc repro train_box -f
             else
-              # Box Minor: แค่ Augment & Evaluate (ไม่เทรนใหม่)
-              dvc repro augment_box && dvc commit train_box && dvc repro evaluate_box
+              echo "🟢 Incremental Box: Finetune Only"
+              # ตาม README ข้อ 1.A
+              dvc repro augment_box
+              dvc commit train_box  # <--- Key Magic!
+              dvc repro evaluate_box
             fi
           fi
           
-          # --- PILL Logic (Updated for New Class) ---
+          # --- PILL Workflow ---
           if [[ "$TAG_NAME" =~ "pill" ]]; then
             if [[ "$TAG_NAME" =~ "major" ]]; then
-              echo "🔴 Mode: PILL Major Update (Force Full Train)"
+              echo "🔴 Major Pill: Full Train"
               dvc repro train_pill -f
             else
-              echo "🟢 Mode: PILL Incremental Update (Train on new data)"
-              # ใช้ dvc repro แทน dvc commit เพื่อให้มันเทรนต่อเมื่อ Data เปลี่ยน (เพิ่ม Class)
-              dvc repro augment_pill && dvc repro train_pill && dvc repro evaluate_pill
+              echo "🟢 Incremental Pill: Finetune Only"
+              # ตาม README ข้อ 2.A เป๊ะๆ!
+              dvc repro augment_pill
+              dvc commit train_pill # <--- Key Magic! ห้ามลืมบรรทัดนี้
+              
+              # สั่ง Finetune ก่อน Evaluate เพื่อความชัวร์ (แม้ใน repro evaluate จะเรียก finetune ก็ตาม)
+              dvc repro finetune_pill
+              dvc repro evaluate_pill
             fi
           fi
 
       - name: Push Artifacts to DVC
-        run: |
-          echo "☁️ Uploading Models to S3..."
-          dvc push
+        run: dvc push
 
       - name: 🆙 Update Lockfile to GitHub
         run: |
@@ -130,21 +132,16 @@ jobs:
             git push origin HEAD:main
           fi
 
-      # ✅ [Smart Deploy] เลือก Path โมเดลให้อัตโนมัติ
       - name: Deploy to S3 Releases
         run: |
           CLEAN_VER=$(echo $TAG_NAME | sed 's/major-//' | sed 's/pill-//' | sed 's/box-//')
-          
           if [[ "$TAG_NAME" =~ "pill" ]]; then MODEL_TYPE="pill"; else MODEL_TYPE="box"; fi
           
-          # ตรวจสอบว่ามีโมเดล Finetuned ไหม? ถ้าไม่มีให้ใช้ Lite_v1 (Main Model)
-          # ทำให้รองรับการเทรน Pill แบบ Minor Tag ได้โดยไม่ Error
-          if [ -d "experiments/arcface_finetuned/$MODEL_TYPE" ]; then
-            PATH_TYPE="arcface_finetuned"
-            echo "📦 Deploying Finetuned Model"
+          # เลือก Path ตาม README (ถ้า Major ใช้ Base, ถ้า Minor ใช้ Finetuned)
+          if [[ "$TAG_NAME" =~ "major" ]]; then
+             PATH_TYPE="arcface_lite_v1"
           else
-            PATH_TYPE="arcface_lite_v1"
-            echo "📦 Deploying Main Model (Lite v1)"
+             PATH_TYPE="arcface_finetuned"
           fi
           
           python src/deploy.py \
@@ -154,16 +151,12 @@ jobs:
             --bucket "${{ secrets.S3_BUCKET_NAME }}" \
             --note "Auto-deployed for $TAG_NAME"
 
-      # ✅ [Auto-Sync] วาปโมเดลกลับเครื่องพี่ทันที!
       - name: ⚡️ Sync Models to Local Dev Workspace
         run: |
           DEV_WORKSPACE="$HOME/Desktop/pilltrackMLops"
           echo "🚀 Teleporting models to: $DEV_WORKSPACE"
-          
           if [ -d "$DEV_WORKSPACE" ]; then
             cp -R experiments/ "$DEV_WORKSPACE/experiments/"
             cp -R metrics/ "$DEV_WORKSPACE/metrics/" || true
-            echo "✅ DONE! Models are ready in your VS Code."
-          else
-            echo "⚠️ Workspace not found. Skipping sync."
+            echo "✅ Sync Complete!"
           fi
