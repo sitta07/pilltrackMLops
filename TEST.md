@@ -5,10 +5,10 @@
 Bash
 
 # 1. ยิง Tag ที่มีคำว่า "major-pill" [/][]
-git tag major-pill-test-v1.1 
+git tag major-pill-production-v.1.0
 
 # 2. ส่งคำสั่ง [/]
-git push origin major-pill-test-v1.1 
+git push origin major-pill-production-v.1.0
 📦 สำหรับ Box (กล่องยา)
 Bash
 
