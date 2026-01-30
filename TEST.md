@@ -13,10 +13,10 @@ git push origin major-pill-production-v.1.0
 Bash
 
 # 1. ยิง Tag ที่มีคำว่า "major-box" [/]
-git tag major-box-test-v1.0
+git tag major-box-test-v1.1
 
 # 2. ส่งคำสั่ง [/]
-git push origin major-box-test-v1.0
+git push origin major-box-test-v1.1
 
 
 2. 🟢 กรณีเพิ่มยาตัวใหม่ (Incremental / Add Class) (ใช้บ่อยสุด)
