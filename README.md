@@ -9,7 +9,7 @@
 [![MLflow](https://img.shields.io/badge/MLflow-Experiment%20Tracking-orange.svg)](https://mlflow.org/)
 [![AWS](https://img.shields.io/badge/AWS-Cloud-orange.svg)](https://aws.amazon.com/)
 [![CI/CD](https://github.com/USERNAME/REPO/actions/workflows/pilltrack-mlops.yml/badge.svg)](
-https://github.com/USERNAME/REPO/actions/workflows/pilltrack-mlops.yml
+https://github.com/sitta07/REPO/actions/workflows/pilltrack-mlops.yml
 )
 
 
