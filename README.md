@@ -2,8 +2,16 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.8+](https://img.shields.io/badge/Python-3.8%2B-blue.svg)](https://www.python.org/downloads/)
+[![PyTorch](https://img.shields.io/badge/PyTorch-Deep%20Learning-ee4c2c.svg)](https://pytorch.org/)
+[![YOLOv8](https://img.shields.io/badge/YOLOv8-Ultralytics-red.svg)]
+[![ArcFace](https://img.shields.io/badge/ArcFace-Face%20Recognition-purple.svg)]
 [![DVC](https://img.shields.io/badge/DVC-Data%20Version%20Control-green.svg)](https://dvc.org/)
 [![MLflow](https://img.shields.io/badge/MLflow-Experiment%20Tracking-orange.svg)](https://mlflow.org/)
+[![AWS](https://img.shields.io/badge/AWS-Cloud-orange.svg)](https://aws.amazon.com/)
+[![CI/CD](https://github.com/USERNAME/REPO/actions/workflows/pilltrack-mlops.yml/badge.svg)](
+https://github.com/USERNAME/REPO/actions/workflows/pilltrack-mlops.yml
+)
+
 
 **Production-grade ML system for pharmaceutical pill and box recognition using deep learning, DVC orchestration, and incremental learning strategies.**
 
