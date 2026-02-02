@@ -8,9 +8,6 @@
 [![DVC](https://img.shields.io/badge/DVC-Data%20Version%20Control-green.svg)](https://dvc.org/)
 [![MLflow](https://img.shields.io/badge/MLflow-Experiment%20Tracking-orange.svg)](https://mlflow.org/)
 [![AWS](https://img.shields.io/badge/AWS-Cloud-orange.svg)](https://aws.amazon.com/)
-[![CI/CD](https://github.com/sitta07/pilltrackMLops/actions/workflows/train-and-deploy.yml/badge.svg)](
-https://github.com/sitta07/pilltrackMLops/actions/workflows/train-and-deploy.yml
-)
 
 
 
