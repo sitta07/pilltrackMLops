@@ -73,8 +73,8 @@ stages:
     outs:
     - path: data/dataset_train_final_box
       hash: md5
-      md5: 90068d0d94e067aae13c2daa69ec0b65.dir
-      size: 1167908933
+      md5: df93816ef33590b64c66117131f24a97.dir
+      size: 1234262151
       nfiles: 9320
   train_box:
     cmd: python src/train.py --train_dir data/dataset_train_final_box --val_dir 
