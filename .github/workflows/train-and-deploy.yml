@@ -19,18 +19,15 @@ jobs:
     
     env:
       PYTHONUNBUFFERED: "1"
-      # ✅ Path จริงของโปรเจกต์ในเครื่องคุณ (ห้ามผิด)
       REAL_PROJECT_PATH: "/home/admin-sitta/pilltrackMLops"
       HF_TOKEN: ${{ secrets.HF_TOKEN }}
 
     steps:
-      # 1. ดึงโค้ดล่าสุดจาก GitHub
       - name: 📥 Checkout Code
         uses: actions/checkout@v3
         with:
           fetch-depth: 0
 
-      # 2. เตรียม Environment (God Mode Setup)
       - name: ⚙️ Setup Environment (God Mode Fix)
         shell: bash
         run: |
@@ -39,39 +36,21 @@ jobs:
           conda activate pilltrack
           
           echo "🔍 Checking existing PyTorch version..."
-          
-          # เช็คว่ามี Torch Nightly ('dev') และมองเห็น GPU ไหม?
           if python -c "import torch; exit(0) if 'dev' in torch.__version__ and torch.cuda.is_available() else exit(1)"; then
-             # ✅ CASE A: มีของดีอยู่แล้ว (Fast Lane)
              echo "✅ RTX 50 Ready! (Torch Nightly detected)"
              echo "⏩ Skipping heavy installation..."
-             
-             # อัปเดตแค่ requirements อื่นๆ
              pip install -r requirements.txt --no-deps
              pip install "dvc[s3]>=3.0" python-dotenv
-             
-             # 🔥 Ensure NVIDIA Runtime is present (กันเหนียว)
              echo "🔧 Ensuring NVIDIA Runtime..."
              pip install nvidia-cuda-runtime-cu12 nvidia-cuda-nvrtc-cu12
-             
           else
-             # 🛑 CASE B: เครื่องยังไม่พร้อม (Full Install)
-             echo "🛑 Environment needs update for RTX 5060 Ti..."
-             echo "🚀 Starting Fresh Install (The Sandwich Strategy)..."
-             
-             # 1. ล้างบางของเก่า
+             echo "🛑 Environment needs update..."
              pip uninstall -y torch torchvision torchaudio timm kornia transparent-background rembg jsonschema onnxruntime-gpu || true
-             
-             # 2. ลง Library ปกติ
              pip install -r requirements.txt
              pip install "dvc[s3]>=3.0" python-dotenv
-             
-             # 3. สอดไส้ RTX 50 Engine (Nightly Swap)
              echo "🔄 Swapping to Nightly Build..."
              pip uninstall -y torch torchvision torchaudio
              pip install --pre torch torchvision --index-url https://download.pytorch.org/whl/nightly/cu124 --no-deps
-             
-             # 🔥 GOD MODE INSTALL: ลงแม่มทุกอย่างของ NVIDIA
              echo "🔧 Installing ALL NVIDIA libraries..."
              pip install nvidia-cuda-runtime-cu12 nvidia-cuda-nvrtc-cu12 \
                          nvidia-cusparselt-cu12 nvidia-cublas-cu12 \
@@ -79,32 +58,18 @@ jobs:
                          nvidia-cufft-cu12 nvidia-nvjitlink-cu12
           fi
           
-          # --------------------------------------------------------------------
-          # 🔥 GOD MODE LINKING: เชื่อมทุกไฟล์ .so เข้า System (ทำทุกรอบ!)
-          # --------------------------------------------------------------------
           echo "🔗 Linking ALL NVIDIA Libraries (God Mode)..."
           SITE_PKG=$(python -c "import site; print(site.getsitepackages()[0])")
-          
-          # วนลูปหาไฟล์ .so ทั้งหมดใน folder nvidia แล้ว link เข้า conda lib
           find "$SITE_PKG/nvidia" -name "*.so*" -type f | while read -r lib_file; do
               lib_name=$(basename "$lib_file")
-              # Link ไฟล์ (force overwrite)
               ln -sf "$lib_file" "$CONDA_PREFIX/lib/$lib_name"
           done
-          
-          # Link ไฟล์ที่มี version number ย่อย (กันเหนียว)
           ln -sf $CONDA_PREFIX/lib/libcublas.so.12 $CONDA_PREFIX/lib/libcublas.so || true
           ln -sf $CONDA_PREFIX/lib/libcudart.so.12 $CONDA_PREFIX/lib/libcudart.so || true
-          
-          # 🔥 EXPORT LD_LIBRARY_PATH (สำคัญมากสำหรับ PyTorch)
           export LD_LIBRARY_PATH=$CONDA_PREFIX/lib:$LD_LIBRARY_PATH
-          
-          echo "✅ All Libraries Linked (God Mode Complete)!"
-          
-          # Final Check
+          echo "✅ All Libraries Linked!"
           python -c "import torch; print(f'🔥 Torch: {torch.__version__}, GPU: {torch.cuda.get_device_name(0) if torch.cuda.is_available() else None}')"
 
-      # 3. เชื่อมต่อข้อมูลจริง (Input Only Link)
       - name: 🔗 Link Real Data (Input Only)
         run: |
           echo "🔗 Linking inputs only..."
@@ -119,7 +84,6 @@ jobs:
              exit 1
           fi
 
-      # 4. ตั้งค่า AWS S3
       - name: ☁️ Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v2
         with:
@@ -127,7 +91,6 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ap-southeast-1
 
-      # 5. ดึงไฟล์ DVC (Models/Metrics)
       - name: 📥 DVC Pull
         shell: bash
         run: |
@@ -135,26 +98,27 @@ jobs:
           conda activate pilltrack
           dvc pull experiments/ metrics/ --force || echo "⚠️ No models on S3 yet, starting fresh."
 
-      # 6. รัน Pipeline หลัก
       - name: 🤖 Run AI Pipeline (GPU Accelerated)
         shell: bash
         run: |
           source ~/miniconda3/etc/profile.d/conda.sh
           conda activate pilltrack
           
-          # --------------------------------------------------------------------
-          # 🔥 RTX 50 CONFIG: The Magic Environment Variables
-          # --------------------------------------------------------------------
-          # สำคัญมาก! ช่วยให้รัน PyTorch บนการ์ดใหม่ที่ Kernel ยังไม่สมบูรณ์ได้ (แก้ no kernel image)
+          # 🔥 RTX 50 CONFIG: Flags
           export CUDA_MODULE_LOADING=LAZY
-          
-          # สำคัญมาก! รวม Path ของ System Library เข้าไปด้วย
+          export CUDA_FORCE_PTX_JIT=1
+          export TORCH_CUDNN_V8_API_ENABLED=1
+          export NCCL_P2P_DISABLE=1
           export LD_LIBRARY_PATH=$CONDA_PREFIX/lib:/usr/lib/wsl/lib:/usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH
+          
+          # 💉 CODE INJECTION: ปิด Benchmark (Stability Fix)
+          echo "💉 Injecting stability code into src/train.py..."
+          sed -i '/import torch/a torch.backends.cudnn.benchmark = False\ntorch.backends.cudnn.deterministic = True\ntorch.backends.cuda.matmul.allow_tf32 = True\ntorch.backends.cudnn.allow_tf32 = True' src/train.py
+          echo "✅ Injection Complete!"
           
           TAG_NAME=${GITHUB_REF#refs/tags/}
           echo "🏷️ Processing Tag: $TAG_NAME"
           
-          # --- BOX WORKFLOW ---
           if [[ "$TAG_NAME" =~ "box" ]]; then
             if [[ "$TAG_NAME" =~ "major" ]]; then
               echo "🔴 Major Box: Full Training..."
@@ -168,7 +132,6 @@ jobs:
             fi
           fi
           
-          # --- PILL WORKFLOW ---
           if [[ "$TAG_NAME" =~ "pill" ]]; then
             if [[ "$TAG_NAME" =~ "major" ]]; then
               echo "🔴 Major Pill: Full Training..."
@@ -182,7 +145,6 @@ jobs:
             fi
           fi
 
-      # 7. ส่งผลลัพธ์ขึ้น S3
       - name: 💾 Push Artifacts to S3
         if: success()
         run: |
@@ -190,34 +152,27 @@ jobs:
           conda activate pilltrack
           dvc push
 
-      # 8. Sync กลับมาที่เครื่องจริง (รวมถึงไฟล์รูปที่ Process แล้วด้วย!)
       - name: 🔄 Sync Results Back to Local Workspace
         if: always()
         run: |
           echo "🚀 Syncing results back to: $REAL_PROJECT_PATH"
-          
-          # 1. ก๊อปไฟล์ผลลัพธ์การเทรน
           cp -r experiments "$REAL_PROJECT_PATH/" || true
           cp -r metrics "$REAL_PROJECT_PATH/" || true
           cp dvc.lock "$REAL_PROJECT_PATH/" || true
           
-          # 2. 🔥 ก๊อปรูปที่ Process แล้วกลับมาด้วย (จะได้เห็นผลงานในเครื่องจริง)
           echo "📸 Syncing processed images..."
           mkdir -p "$REAL_PROJECT_PATH/data/processed_box"
           mkdir -p "$REAL_PROJECT_PATH/data/processed_pill"
           
-          # ใช้ -u (update) เพื่อก๊อปเฉพาะไฟล์ใหม่
           if [ -d "data/processed_box" ]; then
             cp -ru data/processed_box/* "$REAL_PROJECT_PATH/data/processed_box/" || true
           fi
-          
           if [ -d "data/processed_pill" ]; then
             cp -ru data/processed_pill/* "$REAL_PROJECT_PATH/data/processed_pill/" || true
           fi
           
           echo "✅ Sync Complete! Open VS Code to see your images."
 
-      # 9. Update dvc.lock บน GitHub
       - name: 📤 Git Commit DVC Lock
         if: success()
         run: |
