@@ -18,14 +18,26 @@ def process_background_removal(input_root, output_root, model_type='base'):
     if not os.path.exists(input_root):
         raise FileNotFoundError(f"❌ Input folder not found: {input_root}")
 
-    # 2. Setup Device
-    print("⚠️ Forcing CPU for background removal (RTX 50-series workaround)...")
-    device = torch.device('cpu')  # บังคับ CPU
-    logger.info(f"⚡ Using device: CPU")
-    # 3. Scan Files First (เพื่อดูว่าต้องทำกี่รูป)
+    # 2. Setup Device (Smart Detect for RTX 5060 Ti)
+    if torch.cuda.is_available():
+        device = torch.device('cuda')
+        print(f"🚀 Using GPU: {torch.cuda.get_device_name(0)}")
+    elif torch.backends.mps.is_available():
+        device = torch.device('mps')
+    else:
+        device = torch.device('cpu')
+        print("⚠️ GPU not found/compatible, falling back to CPU")
+
+    # Log Device ที่ใช้งานจริง
+    logger.info(f"⚡ Device set to: {str(device).upper()}") 
+    
+    # ❌ ลบบรรทัดนี้ทิ้ง! (remover = ...) อย่าเพิ่งโหลดโมเดลตรงนี้ เดี๋ยวเปลือง VRAM ฟรี
+
+    # 3. Scan Files First (เช็คก่อนว่ามีงานไหม)
     files_to_process = []
     skipped_count = 0
     
+    print("🔍 Scanning files...")
     for root, dirs, files in os.walk(input_root):
         for file in files:
             if file.lower().endswith(VALID_EXTENSIONS):
@@ -38,21 +50,27 @@ def process_background_removal(input_root, output_root, model_type='base'):
                 base_name = os.path.splitext(file)[0]
                 output_path = os.path.join(output_dir, base_name + ".png")
                 
-                # 🔥 LAZY CHECK: เช็คก่อนเลยว่ามีไฟล์ปลายทางหรือยัง
+                # 🔥 LAZY CHECK: เช็คว่าทำไปหรือยัง
                 if os.path.exists(output_path):
                     skipped_count += 1
                 else:
                     files_to_process.append((input_path, output_dir, output_path))
 
+    # ถ้าไม่มีงานใหม่เลย ก็จบโปรแกรมทันที (ไม่ต้องโหลด Model)
     if not files_to_process:
         logger.info(f"✨ All {skipped_count} images are already processed. Nothing to do!")
         return
 
     logger.info(f"🔥 Found {len(files_to_process)} NEW images to process (Skipped {skipped_count} existing).")
 
-    # 4. Load Model (โหลดเฉพาะเมื่อมีงานต้องทำ)
-    logger.info(f"⏳ Loading AI model ({model_type})...")
-    remover = Remover(mode=model_type, device=device)
+    # 4. Load Model (โหลดตรงนี้ดีที่สุด! โหลดเมื่อจำเป็นต้องใช้)
+    logger.info(f"⏳ Loading AI model ({model_type}) to {str(device).upper()}...")
+    try:
+        remover = Remover(mode=model_type, device=device)
+    except Exception as e:
+        logger.error(f"❌ Failed to load model on {device}: {e}")
+        logger.info("⚠️ Trying fallback to CPU...")
+        remover = Remover(mode=model_type, device='cpu')
 
     # 5. Processing Loop
     success = 0
@@ -65,7 +83,7 @@ def process_background_removal(input_root, output_root, model_type='base'):
 
             # Process
             img = Image.open(input_path).convert("RGB")
-            out = remover.process(img)
+            out = remover.process(img) # ส่งงานเข้า GPU
 
             # Save as PNG
             out.save(output_path)
