@@ -30,7 +30,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      # 2. เตรียม Environment (RTX 50 Fix + God Mode Libraries)
+      # 2. เตรียม Environment (God Mode Setup)
       - name: ⚙️ Setup Environment (RTX 5060 Ti Ready)
         shell: bash
         run: |
@@ -66,8 +66,8 @@ jobs:
              pip install -r requirements.txt
              pip install "dvc[s3]>=3.0" python-dotenv
              
-             # 3. 🔥 สอดไส้ RTX 50 Engine (Nightly Swap with Architecture Support)
-             echo "🔄 Swapping to Nightly Build with RTX 50 Support..."
+             # 3. 🔥 สอดไส้ RTX 50 Engine
+             echo "🔄 Swapping to Nightly Build..."
              pip uninstall -y torch torchvision torchaudio
              
              # Install PyTorch Nightly with CUDA 12.4
@@ -91,6 +91,7 @@ jobs:
           # วนลูปหาไฟล์ .so ทั้งหมดใน folder nvidia แล้ว link เข้า conda lib
           find "$SITE_PKG/nvidia" -name "*.so*" -type f 2>/dev/null | while read -r lib_file; do
               lib_name=$(basename "$lib_file")
+              # Link ไฟล์ (force overwrite)
               ln -sf "$lib_file" "$CONDA_PREFIX/lib/$lib_name"
           done
           
@@ -104,7 +105,7 @@ jobs:
           
           echo "✅ All Libraries Linked (God Mode Complete)!"
           
-          # Final Check with Compute Capability
+          # Final Check
           python -c "import torch; print(f'🔥 Torch: {torch.__version__}'); print(f'GPU: {torch.cuda.get_device_name(0) if torch.cuda.is_available() else \"NOT AVAILABLE\"}');"
 
       # 3. เชื่อมต่อข้อมูลจริง
@@ -138,8 +139,8 @@ jobs:
           conda activate pilltrack
           dvc pull experiments/ metrics/ --force || echo "⚠️ No models on S3 yet, starting fresh."
 
-      # 6. รัน Pipeline หลัก (RTX 5060 Ti COMPATIBILITY MODE)
-      - name: 🤖 Run AI Pipeline (RTX 5060 Ti Mode)
+      # 6. รัน Pipeline หลัก (BACKWARD COMPATIBILITY MODE)
+      - name: 🤖 Run AI Pipeline (Compatibility Mode)
         shell: bash
         run: |
           source ~/miniconda3/etc/profile.d/conda.sh
@@ -148,19 +149,17 @@ jobs:
           # ====================================================================
           # 🏥 PHASE 1: PREPROCESS (CLEAN ENV) - สำหรับ rembg/ONNX
           # ====================================================================
-          # rembg ไม่ชอบ Env Var พวกนี้ เราต้องลบออกก่อน ไม่งั้น Error CUDNN
+          # rembg ไม่ชอบ Env Var พวกนี้ ลบออกก่อน
           unset CUDA_MODULE_LOADING CUDA_FORCE_PTX_JIT TORCH_CUDNN_V8_API_ENABLED NCCL_P2P_DISABLE TORCH_USE_CUDA_DSA TORCH_CUDA_ARCH_LIST
           
           TAG_NAME=${GITHUB_REF#refs/tags/}
-          echo "🧹 [PHASE 1] Starting Preprocess Phase (Clean Env) for tag: $TAG_NAME"
+          echo "🧹 [PHASE 1] Preprocessing (Clean Env) for tag: $TAG_NAME"
           
           if [[ "$TAG_NAME" =~ "box" ]]; then
-              echo "📦 Preprocessing BOX data..."
               dvc repro preprocess_box -f
           fi
           
           if [[ "$TAG_NAME" =~ "pill" ]]; then
-              echo "💊 Preprocessing PILL data..."
               dvc repro preprocess_pill -f
           fi
           
@@ -171,53 +170,39 @@ jobs:
           sed -i '/import torch/a torch.backends.cudnn.benchmark = False\ntorch.backends.cudnn.deterministic = True\ntorch.backends.cuda.matmul.allow_tf32 = True\ntorch.backends.cudnn.allow_tf32 = True' src/train.py
 
           # ====================================================================
-          # 🚀 PHASE 2: TRAINING (RTX 5060 Ti COMPATIBILITY MODE)
+          # 🚀 PHASE 2: TRAINING (BACKWARD COMPATIBILITY MODE)
           # ====================================================================
-          echo "🏎️ [PHASE 2] Enabling RTX 5060 Ti Compatibility Mode..."
+          echo "🏎️ [PHASE 2] Enabling Backward Compatibility Mode..."
           
-          # 🔥 RTX 50 Series (Blackwell) Environment Variables
-          export CUDA_MODULE_LOADING=LAZY                      # Lazy load CUDA modules (fix kernel not found)
-          export CUDA_FORCE_PTX_JIT=1                          # Force JIT compilation
-          export TORCH_USE_CUDA_DSA=1                          # Enable assertions
-          export TORCH_CUDA_ARCH_LIST="10.0"                   # RTX 5060 Ti architecture
+          # 🔥 HERO FIX: บังคับใช้ Architecture รุ่นพี่ (9.0+PTX)
+          # เพื่อให้ Driver ของ RTX 50 ยอม JIT Compile โค้ดเก่าให้วิ่งได้
+          export TORCH_CUDA_ARCH_LIST="9.0+PTX"
+          
+          # Environment Variables for RTX 50
+          export CUDA_MODULE_LOADING=LAZY
+          export CUDA_FORCE_PTX_JIT=1
           export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
           export TORCH_CUDNN_V8_API_ENABLED=1
           export NCCL_P2P_DISABLE=1
+          export CUDA_LAUNCH_BLOCKING=0
           
           # Library paths (Critical)
           export LD_LIBRARY_PATH=$CONDA_PREFIX/lib:/usr/lib/wsl/lib:/usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH
           
-          # Performance opts
-          export TORCH_ALLOW_TF32_CUBLAS_OVERRIDE=1
-          export CUDA_DEVICE_MAX_CONNECTIONS=1
-          
-          # ====================================================================
-          # 🔍 GPU VERIFICATION LOG (เช็คการ์ดจอก่อนเทรน)
-          # ====================================================================
-          echo "🔍 Verifying GPU and CUDA Setup..."
+          echo "🔍 Verifying GPU Setup..."
           python -c "
           import torch
-          print('-' * 40)
           print(f'🔥 PyTorch Version: {torch.__version__}')
-          print(f'🔥 CUDA Available:  {torch.cuda.is_available()}')
-          if torch.cuda.is_available():
-              print(f'🔥 GPU Name:        {torch.cuda.get_device_name(0)}')
-              cc = torch.cuda.get_device_capability(0)
-              print(f'🔥 Compute Cap:     {cc[0]}.{cc[1]}')
-              print(f'🔥 CUDA Version:    {torch.version.cuda}')
-              if cc[0] >= 10:
-                  print('🚀 RTX 50 Series Detected - JIT Compilation Enabled!')
-          else:
-              print('❌ CUDA not available! Something is wrong.')
-              exit(1)
-          print('-' * 40)
+          print(f'🔥 GPU Name:        {torch.cuda.get_device_name(0)}')
+          print(f'🔥 Arch List Env:   {torch.cuda.get_arch_list()}')
           "
           
-          echo "🚀 Starting Training Loop with RTX 5060 Ti optimization..."
+          echo "🚀 Starting Training Loop..."
           
           if [[ "$TAG_NAME" =~ "box" ]]; then
             if [[ "$TAG_NAME" =~ "major" ]]; then
               echo "🔴 Major Box: Full Training..."
+              # ไม่ต้องใช้ -f ตรงนี้ DVC จะรู้เองว่าต้องรันต่อ
               dvc repro train_box
             else
               echo "🟢 Minor Box: Incremental Learning..."
