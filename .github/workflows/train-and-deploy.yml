@@ -36,66 +36,52 @@ jobs:
           conda activate pilltrack
           
           echo "🔍 Checking existing PyTorch version..."
-          
-          # เช็คว่า Torch Nightly + GPU + Library ครบไหม?
           if python -c "import torch; exit(0) if 'dev' in torch.__version__ and torch.cuda.is_available() else exit(1)"; then
              echo "✅ RTX 50 Ready! (Torch Nightly detected)"
              echo "⏩ Skipping heavy installation..."
              pip install -r requirements.txt --no-deps
              pip install "dvc[s3]>=3.0" python-dotenv
-             
           else
              echo "🛑 Environment needs update for RTX 5060 Ti..."
-             echo "🚀 Starting Fresh Install (The Sandwich Strategy)..."
-             
-             # 1. ล้างบาง
+             echo "🚀 Starting Fresh Install..."
              pip uninstall -y torch torchvision torchaudio timm kornia transparent-background || true
-             
-             # 2. ลง Library ปกติ
              pip install -r requirements.txt
              pip install "dvc[s3]>=3.0" python-dotenv
-             
-             # 3. สอดไส้ RTX 50 Engine
              echo "🔄 Swapping to Nightly Build..."
              pip uninstall -y torch torchvision torchaudio
-             
-             # ลง Torch Nightly
              pip install --pre torch torchvision --index-url https://download.pytorch.org/whl/nightly/cu124 --no-deps
-             
-             # ลง Library เสริม
              echo "🔧 Installing missing CUDA libraries..."
              pip install nvidia-cusparselt-cu12
-             
-             # -------------------------------------------------------------
-             # 🔥 HERO FIX: บังคับ Link ไฟล์ .so ออกมาให้ PyTorch เห็น
-             # -------------------------------------------------------------
              echo "🔗 Manually linking libcusparseLt.so.0..."
-             
-             # หา Path ของ site-packages
              SITE_PKG=$(python -c "import site; print(site.getsitepackages()[0])")
-             
-             # สร้าง Symlink เข้า Conda Lib (ที่ที่ PyTorch มองหาแน่นอน)
              ln -sf $SITE_PKG/nvidia/cusparselt/lib/libcusparseLt.so.0 $CONDA_PREFIX/lib/libcusparseLt.so.0
              ln -sf $SITE_PKG/nvidia/cusparselt/lib/libcusparseLt.so.0 $CONDA_PREFIX/lib/libcusparseLt.so.0.2
-             
              echo "✅ Library Linked!"
           fi
-          
-          # Final Check
           python -c "import torch; print(f'🔥 Torch: {torch.__version__}, GPU: {torch.cuda.get_device_name(0) if torch.cuda.is_available() else None}')"
 
-      - name: 🔗 Link Real Data
+      # ------------------------------------------------------------------
+      # 🔥 HERO FIX: Link เฉพาะ Input Folder (แก้ปัญหา DVC Outside Repo)
+      # ------------------------------------------------------------------
+      - name: 🔗 Link Real Data (Input Only)
         run: |
-          echo "🔗 Linking data from $REAL_PROJECT_PATH/data"
+          echo "🔗 Linking inputs only..."
+          
+          # ลบ data เก่าทิ้ง
           rm -rf data
-          if [ -d "$REAL_PROJECT_PATH/data" ]; then
-            ln -sfn "$REAL_PROJECT_PATH/data" ./data
-            echo "✅ Data Linked Successfully!"
-            ls -F data/
+          # สร้าง folder จริง
+          mkdir -p data
+          
+          # Link เฉพาะไฟล์ดิบ (Input) เข้ามา
+          if [ -d "$REAL_PROJECT_PATH/data/raw_box" ]; then
+            ln -sfn "$REAL_PROJECT_PATH/data/raw_box" ./data/raw_box
+            ln -sfn "$REAL_PROJECT_PATH/data/raw_pill" ./data/raw_pill
+            echo "✅ Input Data Linked Successfully!"
           else
-            echo "❌ ERROR: Real data path not found at $REAL_PROJECT_PATH/data"
-            exit 1
+             echo "❌ Error: Raw data not found at $REAL_PROJECT_PATH/data"
+             exit 1
           fi
+          ls -F data/
 
       - name: ☁️ Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v2
