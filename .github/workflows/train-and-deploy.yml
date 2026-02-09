@@ -19,19 +19,19 @@ jobs:
     
     env:
       PYTHONUNBUFFERED: "1"
-      # ✅ Path จริงของโปรเจกต์ในเครื่องคุณ
       REAL_PROJECT_PATH: "/home/admin-sitta/pilltrackMLops"
       HF_TOKEN: ${{ secrets.HF_TOKEN }}
 
     steps:
-      # 1. ดึงโค้ดล่าสุดจาก GitHub
       - name: 📥 Checkout Code
         uses: actions/checkout@v3
         with:
           fetch-depth: 0
 
-      # 2. เตรียม Environment
-      - name: ⚙️ Setup Environment (RTX 5060 Ti Ready)
+      # ----------------------------------------------------------------------
+      # ⚙️ SETUP ENVIRONMENT (THE CUDA 12.8 FIX)
+      # ----------------------------------------------------------------------
+      - name: ⚙️ Setup Environment (RTX 5060 Ti / CUDA 12.8)
         shell: bash
         run: |
           echo "🐍 Activating Conda Environment..."
@@ -39,35 +39,28 @@ jobs:
           conda activate pilltrack
           
           echo "🔍 Checking existing PyTorch version..."
-          
-          # เช็คว่ามี Torch Nightly ('dev') และมองเห็น GPU ไหม?
-          if python -c "import torch; exit(0) if 'dev' in torch.__version__ and torch.cuda.is_available() else exit(1)"; then
-             echo "✅ RTX 50 Ready! (Torch Nightly detected)"
-             echo "⏩ Skipping heavy installation..."
+          # เช็คว่ามี Torch Nightly ที่เป็น cu128 หรือไม่
+          if python -c "import torch; exit(0) if 'dev' in torch.__version__ and 'cu128' in torch.__version__ and torch.cuda.is_available() else exit(1)"; then
+             echo "✅ RTX 50 Ready! (Correct CUDA 12.8 version detected)"
              pip install -r requirements.txt --no-deps
              pip install "dvc[s3]>=3.0" python-dotenv
-             echo "🔧 Ensuring NVIDIA Runtime..."
-             pip install nvidia-cuda-runtime-cu12 nvidia-cuda-nvrtc-cu12
           else
-             echo "🛑 Environment needs update for RTX 5060 Ti..."
-             echo "🚀 Starting Fresh Install..."
+             echo "🛑 Wrong PyTorch version or old CUDA detected. Updating for RTX 50..."
              
-             # ล้างบางของเก่า
+             # 1. ล้างบางของเก่า (สำคัญมาก! ต้องลบตัว cu124 ออกให้หมด)
              pip uninstall -y torch torchvision torchaudio timm kornia transparent-background rembg jsonschema onnxruntime-gpu || true
              
-             # ลง Library ปกติ
+             # 2. ลง Library ปกติ
              pip install -r requirements.txt
              pip install "dvc[s3]>=3.0" python-dotenv
              
-             # 🔥 สอดไส้ RTX 50 Engine
-             echo "🔄 Swapping to Nightly Build..."
-             pip uninstall -y torch torchvision torchaudio
+             # 3. 🔥 ลง PyTorch Nightly แบบ CUDA 12.8 (พระเอกของเรา)
+             echo "⬇️ Installing PyTorch Nightly with CUDA 12.8 Support..."
+             # ใช้ --index-url ของ cu128 โดยเฉพาะ
+             pip install --pre torch torchvision --index-url https://download.pytorch.org/whl/nightly/cu128 --no-deps
              
-             # ลองใช้ CUDA 12.6 (ถ้ามี) หรือ 12.4
-             pip install --pre torch torchvision --index-url https://download.pytorch.org/whl/nightly/cu124 --no-deps
-             
-             # 🔥 GOD MODE INSTALL
-             echo "🔧 Installing ALL NVIDIA libraries..."
+             # 4. ลง NVIDIA Libraries (เอาเวอร์ชันล่าสุด)
+             echo "🔧 Installing latest NVIDIA libraries..."
              pip install nvidia-cuda-runtime-cu12 nvidia-cuda-nvrtc-cu12 \
                          nvidia-cusparselt-cu12 nvidia-cublas-cu12 \
                          nvidia-cudnn-cu12 nvidia-curand-cu12 \
@@ -78,39 +71,36 @@ jobs:
           # --------------------------------------------------------------------
           # 🔥 GOD MODE LINKING
           # --------------------------------------------------------------------
-          echo "🔗 Linking ALL NVIDIA Libraries (God Mode)..."
+          echo "🔗 Linking NVIDIA Libraries..."
           SITE_PKG=$(python -c "import site; print(site.getsitepackages()[0])")
-          
           find "$SITE_PKG/nvidia" -name "*.so*" -type f 2>/dev/null | while read -r lib_file; do
               lib_name=$(basename "$lib_file")
               ln -sf "$lib_file" "$CONDA_PREFIX/lib/$lib_name"
           done
-          
+          # Link ไฟล์ Version หลัก
           ln -sf $CONDA_PREFIX/lib/libcublas.so.12 $CONDA_PREFIX/lib/libcublas.so 2>/dev/null || true
           ln -sf $CONDA_PREFIX/lib/libcudart.so.12 $CONDA_PREFIX/lib/libcudart.so 2>/dev/null || true
           ln -sf $CONDA_PREFIX/lib/libcudnn.so.9 $CONDA_PREFIX/lib/libcudnn.so 2>/dev/null || true
           
           export LD_LIBRARY_PATH=$CONDA_PREFIX/lib:$LD_LIBRARY_PATH
-          echo "✅ All Libraries Linked!"
           
-          python -c "import torch; print(f'🔥 Torch: {torch.__version__}'); print(f'GPU: {torch.cuda.get_device_name(0) if torch.cuda.is_available() else \"NOT AVAILABLE\"}');"
+          # Final Check (ต้องขึ้น cu128)
+          python -c "import torch; print(f'🔥 Torch Version: {torch.__version__}'); print(f'🔥 GPU: {torch.cuda.get_device_name(0) if torch.cuda.is_available() else \"NOT AVAILABLE\"}');"
 
-      # 3. เชื่อมต่อข้อมูลจริง
-      - name: 🔗 Link Real Data (Input Only)
+      - name: 🔗 Link Real Data
         run: |
-          echo "🔗 Linking inputs only..."
+          echo "🔗 Linking inputs..."
           rm -rf data
           mkdir -p data
           if [ -d "$REAL_PROJECT_PATH/data/raw_box" ]; then
             ln -sfn "$REAL_PROJECT_PATH/data/raw_box" ./data/raw_box
             ln -sfn "$REAL_PROJECT_PATH/data/raw_pill" ./data/raw_pill
-            echo "✅ Input Data Linked Successfully!"
+            echo "✅ Input Data Linked!"
           else
-             echo "❌ Error: Raw data not found at $REAL_PROJECT_PATH/data"
+             echo "❌ Error: Raw data not found"
              exit 1
           fi
 
-      # 4. ตั้งค่า AWS S3
       - name: ☁️ Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v2
         with:
@@ -118,7 +108,6 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ap-southeast-1
 
-      # 5. ดึงไฟล์ DVC
       - name: 📥 DVC Pull
         shell: bash
         run: |
@@ -126,61 +115,44 @@ jobs:
           conda activate pilltrack
           dvc pull experiments/ metrics/ --force || echo "⚠️ No models on S3 yet, starting fresh."
 
-      # 6. รัน Pipeline หลัก (Safe Mode: CuDNN Disabled)
-      - name: 🤖 Run AI Pipeline (Safe Mode)
+      # ----------------------------------------------------------------------
+      # 🤖 RUN PIPELINE (WITH CUDA 12.8 FLAGS)
+      # ----------------------------------------------------------------------
+      - name: 🤖 Run AI Pipeline (CUDA 12.8 Native)
         shell: bash
         run: |
           source ~/miniconda3/etc/profile.d/conda.sh
           conda activate pilltrack
           
-          # ====================================================================
-          # 🏥 PHASE 1: PREPROCESS
-          # ====================================================================
-          unset CUDA_MODULE_LOADING CUDA_FORCE_PTX_JIT TORCH_CUDNN_V8_API_ENABLED NCCL_P2P_DISABLE TORCH_USE_CUDA_DSA TORCH_CUDA_ARCH_LIST
+          # 1. PREPROCESS (CLEAN ENV)
+          unset CUDA_MODULE_LOADING CUDA_FORCE_PTX_JIT TORCH_CUDNN_V8_API_ENABLED
           
           TAG_NAME=${GITHUB_REF#refs/tags/}
-          echo "🧹 [PHASE 1] Preprocessing (Clean Env) for tag: $TAG_NAME"
+          if [[ "$TAG_NAME" =~ "box" ]]; then dvc repro preprocess_box -f; fi
+          if [[ "$TAG_NAME" =~ "pill" ]]; then dvc repro preprocess_pill -f; fi
           
-          if [[ "$TAG_NAME" =~ "box" ]]; then
-              dvc repro preprocess_box -f
-          fi
-          
-          if [[ "$TAG_NAME" =~ "pill" ]]; then
-              dvc repro preprocess_pill -f
-          fi
-          
-          # ====================================================================
-          # 💉 CODE INJECTION: THE NUCLEAR FIX ☢️
-          # ====================================================================
-          echo "💉 Injecting safety code into src/train.py..."
-          
-          # 🔥 เพิ่มบรรทัด 'torch.backends.cudnn.enabled = False' 
-          # เพื่อปิดการใช้ CuDNN ที่พัง และบังคับใช้ Native PyTorch Kernel แทน
-          sed -i '/import torch/a torch.backends.cudnn.enabled = False\ntorch.backends.cudnn.benchmark = False\ntorch.backends.cudnn.deterministic = True\ntorch.backends.cuda.matmul.allow_tf32 = True' src/train.py
-          
-          echo "✅ Safety Code Injected: CuDNN Disabled!"
+          # 2. CODE INJECTION (Safety Net)
+          # ปิด CuDNN benchmark เพื่อความชัวร์ (แต่ cu128 น่าจะแก้แล้ว)
+          sed -i '/import torch/a torch.backends.cudnn.benchmark = False\ntorch.backends.cudnn.deterministic = True\ntorch.backends.cuda.matmul.allow_tf32 = True' src/train.py
 
-          # ====================================================================
-          # 🚀 PHASE 2: TRAINING (Safe Mode)
-          # ====================================================================
-          echo "🏎️ [PHASE 2] Starting Training with Native Kernels..."
+          # 3. TRAINING (CUDA 12.8 BLACKWELL MODE)
+          echo "🏎️ Enabling Blackwell (sm_120) Support..."
           
-          # เรายังคงใช้ Env Var พวกนี้ช่วย JIT Compile ในส่วนอื่นๆ ที่ไม่ใช่ CuDNN
-          export TORCH_CUDA_ARCH_LIST="9.0+PTX"
+          # 🔥 ถ้าใช้ cu128 เราสามารถระบุ 10.0 (Blackwell) ได้เลย!
+          export TORCH_CUDA_ARCH_LIST="10.0"
+          
+          # แต่ถ้า Wheel ยังไม่สมบูรณ์ ให้ใช้ 9.0+PTX เป็นตัวสำรอง (Uncomment ถ้า 10.0 ยังพัง)
+          # export TORCH_CUDA_ARCH_LIST="9.0+PTX"
+          
           export CUDA_MODULE_LOADING=LAZY
-          export CUDA_FORCE_PTX_JIT=1
-          
-          # Library paths
+          export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
           export LD_LIBRARY_PATH=$CONDA_PREFIX/lib:/usr/lib/wsl/lib:/usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH
           
-          echo "🚀 Starting Training Loop..."
-          
+          echo "🚀 Starting Training..."
           if [[ "$TAG_NAME" =~ "box" ]]; then
             if [[ "$TAG_NAME" =~ "major" ]]; then
-              echo "🔴 Major Box: Full Training..."
               dvc repro train_box
             else
-              echo "🟢 Minor Box: Incremental Learning..."
               dvc repro augment_box
               dvc commit train_box -f 
               python src/finetune.py --type box
@@ -190,50 +162,33 @@ jobs:
           
           if [[ "$TAG_NAME" =~ "pill" ]]; then
             if [[ "$TAG_NAME" =~ "major" ]]; then
-              echo "🔴 Major Pill: Full Training..."
               dvc repro train_pill
             else
-              echo "🟢 Minor Pill: Incremental Learning..."
               dvc repro augment_pill
               dvc commit train_pill -f
               python src/finetune.py --type pill
               dvc repro evaluate_pill
             fi
           fi
-          
-          echo "✅ Training Complete!"
 
-      # 7. ส่งผลลัพธ์ขึ้น S3
-      - name: 💾 Push Artifacts to S3
+      - name: 💾 Push Artifacts
         if: success()
         run: |
           source ~/miniconda3/etc/profile.d/conda.sh
           conda activate pilltrack
           dvc push
 
-      # 8. Sync กลับมาที่เครื่องจริง
-      - name: 🔄 Sync Results Back to Local Workspace
+      - name: 🔄 Sync Results Back
         if: always()
         run: |
-          echo "🚀 Syncing results back to: $REAL_PROJECT_PATH"
           cp -r experiments "$REAL_PROJECT_PATH/" || true
           cp -r metrics "$REAL_PROJECT_PATH/" || true
           cp dvc.lock "$REAL_PROJECT_PATH/" || true
-          
-          echo "📸 Syncing processed images..."
           mkdir -p "$REAL_PROJECT_PATH/data/processed_box"
           mkdir -p "$REAL_PROJECT_PATH/data/processed_pill"
-          
-          if [ -d "data/processed_box" ]; then
-            cp -ru data/processed_box/* "$REAL_PROJECT_PATH/data/processed_box/" || true
-          fi
-          if [ -d "data/processed_pill" ]; then
-            cp -ru data/processed_pill/* "$REAL_PROJECT_PATH/data/processed_pill/" || true
-          fi
-          
-          echo "✅ Sync Complete! Open VS Code to see your images."
+          if [ -d "data/processed_box" ]; then cp -ru data/processed_box/* "$REAL_PROJECT_PATH/data/processed_box/" || true; fi
+          if [ -d "data/processed_pill" ]; then cp -ru data/processed_pill/* "$REAL_PROJECT_PATH/data/processed_pill/" || true; fi
 
-      # 9. Update dvc.lock
       - name: 📤 Git Commit DVC Lock
         if: success()
         run: |
