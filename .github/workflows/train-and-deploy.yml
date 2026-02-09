@@ -19,93 +19,68 @@ jobs:
     
     env:
       PYTHONUNBUFFERED: "1"
-      # ✅ Path จริงของโปรเจกต์ในเครื่องคุณ (ห้ามผิด)
       REAL_PROJECT_PATH: "/home/admin-sitta/pilltrackMLops"
       HF_TOKEN: ${{ secrets.HF_TOKEN }}
 
     steps:
-      # 1. ดึงโค้ดล่าสุดจาก GitHub
       - name: 📥 Checkout Code
         uses: actions/checkout@v3
         with:
           fetch-depth: 0
 
-      # 2. เตรียม Environment (Smart Cache + RTX 50 Fix + ONNX Fix)
-      - name: ⚙️ Setup Environment (Ultimate Fix)
+      # ⚙️ Setup Environment (Logic ที่ถูกต้อง)
+      - name: ⚙️ Setup Environment (Fixed Linking Logic)
         shell: bash
         run: |
           echo "🐍 Activating Conda Environment..."
           source ~/miniconda3/etc/profile.d/conda.sh
           conda activate pilltrack
           
+          # 1. Install / Update Packages
           echo "🔍 Checking existing PyTorch version..."
-          
-          # เช็คว่ามี Torch Nightly ('dev') และมองเห็น GPU ไหม?
           if python -c "import torch; exit(0) if 'dev' in torch.__version__ and torch.cuda.is_available() else exit(1)"; then
-             # ✅ CASE A: มีของดีอยู่แล้ว (Fast Lane)
-             echo "✅ RTX 50 Ready! (Torch Nightly detected)"
-             echo "⏩ Skipping heavy installation..."
-             
-             # อัปเดตแค่ requirements อื่นๆ (ใช้ --no-deps เพื่อไม่ให้ไปยุ่งกับ Torch/rembg ที่ลงไว้ดีแล้ว)
+             echo "✅ RTX 50 Ready! (Fast Lane)"
              pip install -r requirements.txt --no-deps
              pip install "dvc[s3]>=3.0" python-dotenv
-             
           else
-             # 🛑 CASE B: เครื่องยังไม่พร้อม หรือเป็นเครื่องใหม่ (Full Install)
-             echo "🛑 Environment needs update for RTX 5060 Ti..."
-             echo "🚀 Starting Fresh Install (The Sandwich Strategy)..."
-             
-             # 1. ล้างบางของเก่าทิ้งให้หมด (กันตีกัน)
+             echo "🛑 Environment needs update..."
              pip uninstall -y torch torchvision torchaudio timm kornia transparent-background rembg jsonschema onnxruntime-gpu || true
-             
-             # 2. ลง Library ปกติก่อน (ให้ได้ Dependencies ครบๆ)
              pip install -r requirements.txt
              pip install "dvc[s3]>=3.0" python-dotenv
              
-             # 3. สอดไส้ RTX 50 Engine (Nightly Swap)
              echo "🔄 Swapping to Nightly Build..."
              pip uninstall -y torch torchvision torchaudio
-             
-             # ลง Torch Nightly (--no-deps เพื่อเลี่ยง Dependency Hell กับ rembg/timm)
              pip install --pre torch torchvision --index-url https://download.pytorch.org/whl/nightly/cu124 --no-deps
              
-             # 🔥 FIX: ลง Library เสริมของ NVIDIA ที่มักจะหายไป และจำเป็นสำหรับ rembg/ONNX
              echo "🔧 Installing missing CUDA libraries..."
              pip install nvidia-cusparselt-cu12 nvidia-cublas-cu12 nvidia-cudnn-cu12
-             
-             # -------------------------------------------------------------
-             # 🔥 HERO FIX: บังคับ Link ไฟล์ .so ออกมาให้ PyTorch และ ONNX เห็น
-             # -------------------------------------------------------------
-             echo "🔗 Linking NVIDIA Libraries..."
-             SITE_PKG=$(python -c "import site; print(site.getsitepackages()[0])")
-             
-             # 1. Link cusparse (สำหรับ PyTorch Nightly)
-             ln -sf $SITE_PKG/nvidia/cusparselt/lib/libcusparseLt.so.0 $CONDA_PREFIX/lib/libcusparseLt.so.0
-             ln -sf $SITE_PKG/nvidia/cusparselt/lib/libcusparseLt.so.0 $CONDA_PREFIX/lib/libcusparseLt.so.0.2
-             
-             # 2. Link cublas & cudnn (สำหรับ ONNX Runtime / rembg GPU)
-             # ต้อง Link ทั้ง .so.12 และชื่อเต็ม เพื่อความชัวร์
-             ln -sf $SITE_PKG/nvidia/cublas/lib/libcublasLt.so.12 $CONDA_PREFIX/lib/libcublasLt.so.12
-             ln -sf $SITE_PKG/nvidia/cublas/lib/libcublas.so.12 $CONDA_PREFIX/lib/libcublas.so.12
-             ln -sf $SITE_PKG/nvidia/cudnn/lib/libcudnn_cnn_infer.so.8 $CONDA_PREFIX/lib/libcudnn_cnn_infer.so.8
-             
-             echo "✅ All Libraries Linked!"
           fi
+          
+          # --------------------------------------------------------------------
+          # 🔥 HERO FIX: ย้ายมาไว้นอก IF-ELSE (เพื่อให้รันทุกรอบ!)
+          # --------------------------------------------------------------------
+          echo "🔗 Linking NVIDIA Libraries (Force Run)..."
+          SITE_PKG=$(python -c "import site; print(site.getsitepackages()[0])")
+          
+          # Link cusparse
+          ln -sf $SITE_PKG/nvidia/cusparselt/lib/libcusparseLt.so.0 $CONDA_PREFIX/lib/libcusparseLt.so.0
+          ln -sf $SITE_PKG/nvidia/cusparselt/lib/libcusparseLt.so.0 $CONDA_PREFIX/lib/libcusparseLt.so.0.2
+          
+          # Link cublas & cudnn (แก้ rembg GPU Error)
+          ln -sf $SITE_PKG/nvidia/cublas/lib/libcublasLt.so.12 $CONDA_PREFIX/lib/libcublasLt.so.12
+          ln -sf $SITE_PKG/nvidia/cublas/lib/libcublas.so.12 $CONDA_PREFIX/lib/libcublas.so.12
+          ln -sf $SITE_PKG/nvidia/cudnn/lib/libcudnn_cnn_infer.so.8 $CONDA_PREFIX/lib/libcudnn_cnn_infer.so.8
+          
+          echo "✅ Libraries Linked Successfully!"
           
           # Final Check
           python -c "import torch; print(f'🔥 Torch: {torch.__version__}, GPU: {torch.cuda.get_device_name(0) if torch.cuda.is_available() else None}')"
 
-      # 3. เชื่อมต่อข้อมูลจริง (Input Only Link)
       - name: 🔗 Link Real Data (Input Only)
         run: |
           echo "🔗 Linking inputs only..."
-          
-          # ลบ data เก่าใน Runner ทิ้ง
           rm -rf data
-          # สร้าง folder จริง (เพื่อให้ DVC เขียน output ลงในนี้ได้ ไม่ error outside repo)
           mkdir -p data
-          
-          # Link เฉพาะไฟล์ดิบ (Input) เข้ามา
           if [ -d "$REAL_PROJECT_PATH/data/raw_box" ]; then
             ln -sfn "$REAL_PROJECT_PATH/data/raw_box" ./data/raw_box
             ln -sfn "$REAL_PROJECT_PATH/data/raw_pill" ./data/raw_pill
@@ -114,9 +89,7 @@ jobs:
              echo "❌ Error: Raw data not found at $REAL_PROJECT_PATH/data"
              exit 1
           fi
-          ls -F data/
 
-      # 4. ตั้งค่า AWS S3
       - name: ☁️ Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v2
         with:
@@ -124,7 +97,6 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ap-southeast-1
 
-      # 5. ดึงไฟล์ DVC (Models/Metrics)
       - name: 📥 DVC Pull
         shell: bash
         run: |
@@ -132,12 +104,14 @@ jobs:
           conda activate pilltrack
           dvc pull experiments/ metrics/ --force || echo "⚠️ No models on S3 yet, starting fresh."
 
-      # 6. รัน Pipeline หลัก
       - name: 🤖 Run AI Pipeline (GPU Accelerated)
         shell: bash
         run: |
           source ~/miniconda3/etc/profile.d/conda.sh
           conda activate pilltrack
+          
+          # 🔥 EXPORT LD_LIBRARY_PATH (กันเหนียวอีกชั้น)
+          export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$CONDA_PREFIX/lib
           
           TAG_NAME=${GITHUB_REF#refs/tags/}
           echo "🏷️ Processing Tag: $TAG_NAME"
@@ -170,7 +144,6 @@ jobs:
             fi
           fi
 
-      # 7. ส่งผลลัพธ์ขึ้น S3
       - name: 💾 Push Artifacts to S3
         if: success()
         run: |
@@ -178,34 +151,27 @@ jobs:
           conda activate pilltrack
           dvc push
 
-      # 8. Sync กลับมาที่เครื่องจริง (รวมถึงไฟล์รูปที่ Process แล้วด้วย!)
       - name: 🔄 Sync Results Back to Local Workspace
         if: always()
         run: |
           echo "🚀 Syncing results back to: $REAL_PROJECT_PATH"
-          
-          # 1. ก๊อปไฟล์ผลลัพธ์การเทรน
           cp -r experiments "$REAL_PROJECT_PATH/" || true
           cp -r metrics "$REAL_PROJECT_PATH/" || true
           cp dvc.lock "$REAL_PROJECT_PATH/" || true
           
-          # 2. 🔥 ก๊อปรูปที่ Process แล้วกลับมาด้วย (จะได้เห็นผลงานในเครื่องจริง)
           echo "📸 Syncing processed images..."
           mkdir -p "$REAL_PROJECT_PATH/data/processed_box"
           mkdir -p "$REAL_PROJECT_PATH/data/processed_pill"
           
-          # ใช้ -u (update) เพื่อก๊อปเฉพาะไฟล์ใหม่
           if [ -d "data/processed_box" ]; then
             cp -ru data/processed_box/* "$REAL_PROJECT_PATH/data/processed_box/" || true
           fi
-          
           if [ -d "data/processed_pill" ]; then
             cp -ru data/processed_pill/* "$REAL_PROJECT_PATH/data/processed_pill/" || true
           fi
           
           echo "✅ Sync Complete! Open VS Code to see your images."
 
-      # 9. Update dvc.lock บน GitHub
       - name: 📤 Git Commit DVC Lock
         if: success()
         run: |
