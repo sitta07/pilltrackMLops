@@ -12,3 +12,4 @@ boto3
 rembg[gpu]
 onnxruntime-gpu
 Pillow
+pooch
