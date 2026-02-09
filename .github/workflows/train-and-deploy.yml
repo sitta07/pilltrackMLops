@@ -28,7 +28,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: ⚙️ Setup Environment (Smart Cache & RTX 50 Fix)
+      - name: ⚙️ Setup Environment (Final Library Fix)
         shell: bash
         run: |
           echo "🐍 Activating Conda Environment..."
@@ -37,7 +37,7 @@ jobs:
           
           echo "🔍 Checking existing PyTorch version..."
           
-          # เช็คว่ามี Torch Dev (Nightly) และ GPU พร้อมไหม
+          # เช็คว่า Torch Nightly + GPU + Library ครบไหม?
           if python -c "import torch; exit(0) if 'dev' in torch.__version__ and torch.cuda.is_available() else exit(1)"; then
              echo "✅ RTX 50 Ready! (Torch Nightly detected)"
              echo "⏩ Skipping heavy installation..."
@@ -59,12 +59,26 @@ jobs:
              echo "🔄 Swapping to Nightly Build..."
              pip uninstall -y torch torchvision torchaudio
              
-             # ลง Torch Nightly (--no-deps เพื่อเลี่ยง Dependency Hell)
+             # ลง Torch Nightly
              pip install --pre torch torchvision --index-url https://download.pytorch.org/whl/nightly/cu124 --no-deps
              
-             # 🔥 FIX: ลง Library สำคัญที่หายไปเพราะ --no-deps
+             # ลง Library เสริม
              echo "🔧 Installing missing CUDA libraries..."
              pip install nvidia-cusparselt-cu12
+             
+             # -------------------------------------------------------------
+             # 🔥 HERO FIX: บังคับ Link ไฟล์ .so ออกมาให้ PyTorch เห็น
+             # -------------------------------------------------------------
+             echo "🔗 Manually linking libcusparseLt.so.0..."
+             
+             # หา Path ของ site-packages
+             SITE_PKG=$(python -c "import site; print(site.getsitepackages()[0])")
+             
+             # สร้าง Symlink เข้า Conda Lib (ที่ที่ PyTorch มองหาแน่นอน)
+             ln -sf $SITE_PKG/nvidia/cusparselt/lib/libcusparseLt.so.0 $CONDA_PREFIX/lib/libcusparseLt.so.0
+             ln -sf $SITE_PKG/nvidia/cusparselt/lib/libcusparseLt.so.0 $CONDA_PREFIX/lib/libcusparseLt.so.0.2
+             
+             echo "✅ Library Linked!"
           fi
           
           # Final Check
