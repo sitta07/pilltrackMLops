@@ -1,6 +1,8 @@
-# torch            <-- ใส่ # ไว้
-# torchvision      <-- ใส่ # ไว้
-dvc[s3]
+# --- Core PyTorch (จัดการโดย Workflow เพื่อรองรับ RTX 50) ---
+# torch
+# torchvision
+
+# --- Data & ML Core ---
 pandas
 numpy
 scikit-learn
@@ -9,16 +11,22 @@ timm
 python-dotenv
 pyyaml
 boto3
-rembg[gpu]
-onnxruntime-gpu
+dvc[s3]>=3.0
+
+# --- Image Processing & Background Removal (GPU Accelerated) ---
+rembg[gpu]          # พระเอกของเรา
+onnxruntime-gpu     # ตัวขับเคลื่อน GPU
 Pillow
-pooch
-jsonschema
+pooch               # ตัวช่วยดาวน์โหลดโมเดล
 scikit-image
 scipy
 pymatting
 filetype
 gradio
-referencing
-rpds-py
-attrs>=22.2.0
+
+# --- JSON Schema Family (แก๊งนี้ต้องมาให้ครบ ไม่งั้น Error) ---
+jsonschema>=4.18.0
+jsonschema-specifications   # <-- 🔥 ตัวที่ขาดเมื่อกี้ (สำคัญมาก)
+referencing                 # <-- ลูกพี่ลูกน้องมัน
+rpds-py                     # <-- เพื่อนสนิทมัน
+attrs>=22.2.0               # <-- ตัวช่วยทั่วไป
