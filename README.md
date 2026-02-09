@@ -127,6 +127,35 @@ pilltrackMLops/
 
 The system supports two training modes via Git tags:
 
+#### 0. Install Runners
+
+A self-hosted GitHub Actions runner is required to execute training jobs (especially for GPU/CUDA workloads).
+
+#### Purpose
+
+Run compute-intensive pipelines (training, evaluation, inference)
+
+Support CUDA-enabled environments
+
+Integrate seamlessly with DVC and the existing MLOps workflow
+
+#### Setup
+
+Create a self-hosted runner on the training machine
+
+Register it with the repository under
+Settings → Actions → Runners
+
+Ensure required dependencies are installed:
+
+Python environment
+
+CUDA / GPU drivers (if applicable)
+
+DVC and project requirements
+
+Once installed and running, the runner will automatically pick up jobs triggered by GitHub Actions.
+
 #### 1. Full Retraining (Major Update)
 
 **Scenario**: Complete model retraining from scratch

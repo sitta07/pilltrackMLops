@@ -36,7 +36,7 @@ jobs:
       # ✅ [Universal Path] หา Path เองอัตโนมัติ
       - name: 🔗 Link Local Dataset to Runner (Universal)
         run: |
-          TARGET_DATA_PATH="$HOME/Desktop/pilltrackMLops/data"
+          TARGET_DATA_PATH="$HOME/pilltrackMLops/data"
           echo "🔍 Auto-detecting dataset at: $TARGET_DATA_PATH"
           mkdir -p data
           
@@ -178,7 +178,7 @@ jobs:
 
       - name: ⚡️ Sync Models to Local Dev Workspace
         run: |
-          DEV_WORKSPACE="$HOME/Desktop/pilltrackMLops"
+          DEV_WORKSPACE="$HOME/pilltrackMLops"
           echo "🚀 Teleporting models to: $DEV_WORKSPACE"
           if [ -d "$DEV_WORKSPACE" ]; then
             cp -R experiments/ "$DEV_WORKSPACE/experiments/"
