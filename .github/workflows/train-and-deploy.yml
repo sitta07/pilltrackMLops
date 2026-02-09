@@ -44,8 +44,7 @@ jobs:
           # 🔥 HERO FIX: บังคับลง PyTorch Nightly (Preview) ที่รองรับ CUDA ใหม่ล่าสุด
           # ขั้นตอนนี้จะทำแค่ครั้งแรกๆ พอเครื่องจำได้แล้ว ครั้งหน้าจะเร็วครับ
           pip uninstall -y torch torchvision torchaudio
-          pip install --pre torch torchvision torchaudio --index-url https://download.pytorch.org/whl/nightly/cu124
-          
+          pip install --pre torch torchvision --index-url https://download.pytorch.org/whl/nightly/cu124
           # เช็คของหน่อยว่าได้ GPU จริงไหม
           python -c "import torch; print(f'🔥 Torch: {torch.__version__}, CUDA: {torch.version.cuda}, GPU: {torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'None'}')"
           
