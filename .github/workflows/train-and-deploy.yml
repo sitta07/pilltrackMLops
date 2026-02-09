@@ -19,7 +19,7 @@ jobs:
     
     env:
       PYTHONUNBUFFERED: "1"
-      # ✅ Path จริงของโปรเจกต์ในเครื่องคุณ (ห้ามผิด)
+      # ✅ Path จริงของโปรเจกต์ในเครื่องคุณ
       REAL_PROJECT_PATH: "/home/admin-sitta/pilltrackMLops"
       HF_TOKEN: ${{ secrets.HF_TOKEN }}
 
@@ -30,8 +30,8 @@ jobs:
         with:
           fetch-depth: 0
 
-      # 2. เตรียม Environment (God Mode Setup)
-      - name: ⚙️ Setup Environment (God Mode Fix)
+      # 2. เตรียม Environment (RTX 50 Fix + God Mode Libraries)
+      - name: ⚙️ Setup Environment (RTX 5060 Ti Ready)
         shell: bash
         run: |
           echo "🐍 Activating Conda Environment..."
@@ -66,9 +66,11 @@ jobs:
              pip install -r requirements.txt
              pip install "dvc[s3]>=3.0" python-dotenv
              
-             # 3. สอดไส้ RTX 50 Engine (Nightly Swap)
-             echo "🔄 Swapping to Nightly Build..."
+             # 3. 🔥 สอดไส้ RTX 50 Engine (Nightly Swap with Architecture Support)
+             echo "🔄 Swapping to Nightly Build with RTX 50 Support..."
              pip uninstall -y torch torchvision torchaudio
+             
+             # Install PyTorch Nightly with CUDA 12.4
              pip install --pre torch torchvision --index-url https://download.pytorch.org/whl/nightly/cu124 --no-deps
              
              # 🔥 GOD MODE INSTALL: ลงแม่มทุกอย่างของ NVIDIA
@@ -76,35 +78,36 @@ jobs:
              pip install nvidia-cuda-runtime-cu12 nvidia-cuda-nvrtc-cu12 \
                          nvidia-cusparselt-cu12 nvidia-cublas-cu12 \
                          nvidia-cudnn-cu12 nvidia-curand-cu12 \
-                         nvidia-cufft-cu12 nvidia-nvjitlink-cu12
+                         nvidia-cufft-cu12 nvidia-nvjitlink-cu12 \
+                         nvidia-nccl-cu12 nvidia-nvtx-cu12
           fi
           
           # --------------------------------------------------------------------
-          # 🔥 GOD MODE LINKING: เชื่อมทุกไฟล์ .so เข้า System (ทำทุกรอบ!)
+          # 🔥 GOD MODE LINKING: เชื่อมทุกไฟล์ .so เข้า System
           # --------------------------------------------------------------------
           echo "🔗 Linking ALL NVIDIA Libraries (God Mode)..."
           SITE_PKG=$(python -c "import site; print(site.getsitepackages()[0])")
           
           # วนลูปหาไฟล์ .so ทั้งหมดใน folder nvidia แล้ว link เข้า conda lib
-          find "$SITE_PKG/nvidia" -name "*.so*" -type f | while read -r lib_file; do
+          find "$SITE_PKG/nvidia" -name "*.so*" -type f 2>/dev/null | while read -r lib_file; do
               lib_name=$(basename "$lib_file")
-              # Link ไฟล์ (force overwrite)
               ln -sf "$lib_file" "$CONDA_PREFIX/lib/$lib_name"
           done
           
           # Link ไฟล์ที่มี version number ย่อย (กันเหนียว)
-          ln -sf $CONDA_PREFIX/lib/libcublas.so.12 $CONDA_PREFIX/lib/libcublas.so || true
-          ln -sf $CONDA_PREFIX/lib/libcudart.so.12 $CONDA_PREFIX/lib/libcudart.so || true
+          ln -sf $CONDA_PREFIX/lib/libcublas.so.12 $CONDA_PREFIX/lib/libcublas.so 2>/dev/null || true
+          ln -sf $CONDA_PREFIX/lib/libcudart.so.12 $CONDA_PREFIX/lib/libcudart.so 2>/dev/null || true
+          ln -sf $CONDA_PREFIX/lib/libcudnn.so.9 $CONDA_PREFIX/lib/libcudnn.so 2>/dev/null || true
           
           # 🔥 EXPORT LD_LIBRARY_PATH (สำคัญมากสำหรับ PyTorch)
           export LD_LIBRARY_PATH=$CONDA_PREFIX/lib:$LD_LIBRARY_PATH
           
           echo "✅ All Libraries Linked (God Mode Complete)!"
           
-          # Final Check
-          python -c "import torch; print(f'🔥 Torch: {torch.__version__}, GPU: {torch.cuda.get_device_name(0) if torch.cuda.is_available() else None}')"
+          # Final Check with Compute Capability
+          python -c "import torch; print(f'🔥 Torch: {torch.__version__}'); print(f'GPU: {torch.cuda.get_device_name(0) if torch.cuda.is_available() else \"NOT AVAILABLE\"}');"
 
-      # 3. เชื่อมต่อข้อมูลจริง (Input Only Link)
+      # 3. เชื่อมต่อข้อมูลจริง
       - name: 🔗 Link Real Data (Input Only)
         run: |
           echo "🔗 Linking inputs only..."
@@ -127,7 +130,7 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ap-southeast-1
 
-      # 5. ดึงไฟล์ DVC (Models/Metrics)
+      # 5. ดึงไฟล์ DVC
       - name: 📥 DVC Pull
         shell: bash
         run: |
@@ -135,8 +138,8 @@ jobs:
           conda activate pilltrack
           dvc pull experiments/ metrics/ --force || echo "⚠️ No models on S3 yet, starting fresh."
 
-      # 6. รัน Pipeline หลัก (SPLIT MODE FIX)
-      - name: 🤖 Run AI Pipeline (Split Mode Fix)
+      # 6. รัน Pipeline หลัก (RTX 5060 Ti COMPATIBILITY MODE)
+      - name: 🤖 Run AI Pipeline (RTX 5060 Ti Mode)
         shell: bash
         run: |
           source ~/miniconda3/etc/profile.d/conda.sh
@@ -146,7 +149,7 @@ jobs:
           # 🏥 PHASE 1: PREPROCESS (CLEAN ENV) - สำหรับ rembg/ONNX
           # ====================================================================
           # rembg ไม่ชอบ Env Var พวกนี้ เราต้องลบออกก่อน ไม่งั้น Error CUDNN
-          unset CUDA_MODULE_LOADING CUDA_FORCE_PTX_JIT TORCH_CUDNN_V8_API_ENABLED NCCL_P2P_DISABLE
+          unset CUDA_MODULE_LOADING CUDA_FORCE_PTX_JIT TORCH_CUDNN_V8_API_ENABLED NCCL_P2P_DISABLE TORCH_USE_CUDA_DSA TORCH_CUDA_ARCH_LIST
           
           TAG_NAME=${GITHUB_REF#refs/tags/}
           echo "🧹 [PHASE 1] Starting Preprocess Phase (Clean Env) for tag: $TAG_NAME"
@@ -168,23 +171,53 @@ jobs:
           sed -i '/import torch/a torch.backends.cudnn.benchmark = False\ntorch.backends.cudnn.deterministic = True\ntorch.backends.cuda.matmul.allow_tf32 = True\ntorch.backends.cudnn.allow_tf32 = True' src/train.py
 
           # ====================================================================
-          # 🚀 PHASE 2: TRAINING (GOD MODE ENV) - สำหรับ PyTorch RTX 50
+          # 🚀 PHASE 2: TRAINING (RTX 5060 Ti COMPATIBILITY MODE)
           # ====================================================================
-          echo "🏎️ [PHASE 2] Switching to GOD MODE for Training..."
+          echo "🏎️ [PHASE 2] Enabling RTX 5060 Ti Compatibility Mode..."
           
-          # PyTorch RTX 50 ต้องการพวกนี้ (Lazy Load + JIT Force)
-          export CUDA_MODULE_LOADING=LAZY
-          export CUDA_FORCE_PTX_JIT=1
+          # 🔥 RTX 50 Series (Blackwell) Environment Variables
+          export CUDA_MODULE_LOADING=LAZY                      # Lazy load CUDA modules (fix kernel not found)
+          export CUDA_FORCE_PTX_JIT=1                          # Force JIT compilation
+          export TORCH_USE_CUDA_DSA=1                          # Enable assertions
+          export TORCH_CUDA_ARCH_LIST="10.0"                   # RTX 5060 Ti architecture
+          export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
           export TORCH_CUDNN_V8_API_ENABLED=1
           export NCCL_P2P_DISABLE=1
+          
+          # Library paths (Critical)
           export LD_LIBRARY_PATH=$CONDA_PREFIX/lib:/usr/lib/wsl/lib:/usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH
           
-          echo "🚀 Starting Training Loop..."
+          # Performance opts
+          export TORCH_ALLOW_TF32_CUBLAS_OVERRIDE=1
+          export CUDA_DEVICE_MAX_CONNECTIONS=1
+          
+          # ====================================================================
+          # 🔍 GPU VERIFICATION LOG (เช็คการ์ดจอก่อนเทรน)
+          # ====================================================================
+          echo "🔍 Verifying GPU and CUDA Setup..."
+          python -c "
+          import torch
+          print('-' * 40)
+          print(f'🔥 PyTorch Version: {torch.__version__}')
+          print(f'🔥 CUDA Available:  {torch.cuda.is_available()}')
+          if torch.cuda.is_available():
+              print(f'🔥 GPU Name:        {torch.cuda.get_device_name(0)}')
+              cc = torch.cuda.get_device_capability(0)
+              print(f'🔥 Compute Cap:     {cc[0]}.{cc[1]}')
+              print(f'🔥 CUDA Version:    {torch.version.cuda}')
+              if cc[0] >= 10:
+                  print('🚀 RTX 50 Series Detected - JIT Compilation Enabled!')
+          else:
+              print('❌ CUDA not available! Something is wrong.')
+              exit(1)
+          print('-' * 40)
+          "
+          
+          echo "🚀 Starting Training Loop with RTX 5060 Ti optimization..."
           
           if [[ "$TAG_NAME" =~ "box" ]]; then
             if [[ "$TAG_NAME" =~ "major" ]]; then
               echo "🔴 Major Box: Full Training..."
-              # ไม่ต้องใช้ -f ตรงนี้ เพราะ Preprocess เปลี่ยนแล้ว DVC จะรู้เองว่าต้องรันต่อ
               dvc repro train_box
             else
               echo "🟢 Minor Box: Incremental Learning..."
@@ -207,6 +240,8 @@ jobs:
               dvc repro evaluate_pill
             fi
           fi
+          
+          echo "✅ Training Complete!"
 
       # 7. ส่งผลลัพธ์ขึ้น S3
       - name: 💾 Push Artifacts to S3
@@ -216,27 +251,22 @@ jobs:
           conda activate pilltrack
           dvc push
 
-      # 8. Sync กลับมาที่เครื่องจริง (รวมถึงไฟล์รูปที่ Process แล้วด้วย!)
+      # 8. Sync กลับมาที่เครื่องจริง
       - name: 🔄 Sync Results Back to Local Workspace
         if: always()
         run: |
           echo "🚀 Syncing results back to: $REAL_PROJECT_PATH"
-          
-          # 1. ก๊อปไฟล์ผลลัพธ์การเทรน
           cp -r experiments "$REAL_PROJECT_PATH/" || true
           cp -r metrics "$REAL_PROJECT_PATH/" || true
           cp dvc.lock "$REAL_PROJECT_PATH/" || true
           
-          # 2. 🔥 ก๊อปรูปที่ Process แล้วกลับมาด้วย (จะได้เห็นผลงานในเครื่องจริง)
           echo "📸 Syncing processed images..."
           mkdir -p "$REAL_PROJECT_PATH/data/processed_box"
           mkdir -p "$REAL_PROJECT_PATH/data/processed_pill"
           
-          # ใช้ -u (update) เพื่อก๊อปเฉพาะไฟล์ใหม่
           if [ -d "data/processed_box" ]; then
             cp -ru data/processed_box/* "$REAL_PROJECT_PATH/data/processed_box/" || true
           fi
-          
           if [ -d "data/processed_pill" ]; then
             cp -ru data/processed_pill/* "$REAL_PROJECT_PATH/data/processed_pill/" || true
           fi
