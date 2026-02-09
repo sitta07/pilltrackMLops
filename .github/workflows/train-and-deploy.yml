@@ -31,7 +31,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      # 2. เตรียม Environment & แก้บั๊ก RTX 50 Series
+      # 2. เตรียม Environment & แก้บั๊ก RTX 50 Series (Dependency Fix)
       - name: ⚙️ Setup Environment (Force RTX 50 Support)
         shell: bash
         run: |
@@ -41,10 +41,18 @@ jobs:
           
           echo "🔧 Optimizing for RTX 5060 Ti (Blackwell)..."
           
-          # 🔥 HERO FIX: บังคับลง PyTorch Nightly (Preview) ที่รองรับ CUDA ใหม่ล่าสุด
-          # ขั้นตอนนี้จะทำแค่ครั้งแรกๆ พอเครื่องจำได้แล้ว ครั้งหน้าจะเร็วครับ
+          # 1. ลบของเก่าออกให้หมดก่อน (Clean Slate)
           pip uninstall -y torch torchvision torchaudio
-          pip install --pre torch torchvision --index-url https://download.pytorch.org/whl/nightly/cu124
+          
+          # 2. ลง Torch ตัวหลัก (Nightly Build for CUDA 12.4)
+          echo "⬇️ Installing Torch Nightly..."
+          pip install --pre torch --index-url https://download.pytorch.org/whl/nightly/cu124
+          
+          # 3. ลง Torchvision แบบ "Force Install" (--no-deps)
+          # เพื่อข้ามการเช็ค Version Match ที่มักจะพังใน Nightly Build
+          echo "⬇️ Installing Torchvision (No Deps Mode)..."
+          pip install --pre torchvision --index-url https://download.pytorch.org/whl/nightly/cu124 --no-deps
+          
           # เช็คของหน่อยว่าได้ GPU จริงไหม
           python -c "import torch; print(f'🔥 Torch: {torch.__version__}, CUDA: {torch.version.cuda}, GPU: {torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'None'}')"
           
