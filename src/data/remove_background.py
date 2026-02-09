@@ -21,8 +21,7 @@ def process_background_removal(input_root, output_root, model_type='base'):
     # 2. Setup Device
     print("⚠️ Forcing CPU for background removal (RTX 50-series workaround)...")
     device = torch.device('cpu')  # บังคับ CPU
-    logger.info(f"⚡ Using device: {device.upper()}")
-    
+    logger.info(f"⚡ Using device: CPU")
     # 3. Scan Files First (เพื่อดูว่าต้องทำกี่รูป)
     files_to_process = []
     skipped_count = 0
