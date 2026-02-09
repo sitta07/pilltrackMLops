@@ -1,4 +1,4 @@
-name: 💊 PillTrack AI Pipeline (RTX 5060 Ti Ultimate)
+name: 💊 PillTrack AI Pipeline (RTX 5060 Ti God Mode)
 
 on:
   push:
@@ -30,8 +30,8 @@ jobs:
         with:
           fetch-depth: 0
 
-      # 2. เตรียม Environment (Smart Cache + Full NVIDIA Fix)
-      - name: ⚙️ Setup Environment (The 1000% Fix)
+      # 2. เตรียม Environment (God Mode Setup)
+      - name: ⚙️ Setup Environment (God Mode Fix)
         shell: bash
         run: |
           echo "🐍 Activating Conda Environment..."
@@ -46,63 +46,60 @@ jobs:
              echo "✅ RTX 50 Ready! (Torch Nightly detected)"
              echo "⏩ Skipping heavy installation..."
              
-             # อัปเดตแค่ requirements อื่นๆ (ใช้ --no-deps เพื่อไม่ให้ไปยุ่งกับ Torch/rembg ที่ลงไว้ดีแล้ว)
+             # อัปเดตแค่ requirements อื่นๆ
              pip install -r requirements.txt --no-deps
              pip install "dvc[s3]>=3.0" python-dotenv
              
-             # 🔥 แม้จะมีของแล้ว ก็ต้องลง NVIDIA Libs เพิ่ม (เผื่อขาด curand/cufft)
-             echo "🔧 Ensuring NVIDIA libraries are present..."
-             pip install nvidia-cusparselt-cu12 nvidia-cublas-cu12 nvidia-cudnn-cu12 nvidia-curand-cu12 nvidia-cufft-cu12
+             # 🔥 Ensure NVIDIA Runtime is present (กันเหนียว)
+             echo "🔧 Ensuring NVIDIA Runtime..."
+             pip install nvidia-cuda-runtime-cu12 nvidia-cuda-nvrtc-cu12
              
           else
-             # 🛑 CASE B: เครื่องยังไม่พร้อม หรือเป็นเครื่องใหม่ (Full Install)
+             # 🛑 CASE B: เครื่องยังไม่พร้อม (Full Install)
              echo "🛑 Environment needs update for RTX 5060 Ti..."
              echo "🚀 Starting Fresh Install (The Sandwich Strategy)..."
              
-             # 1. ล้างบางของเก่าทิ้งให้หมด (กันตีกัน)
+             # 1. ล้างบางของเก่า
              pip uninstall -y torch torchvision torchaudio timm kornia transparent-background rembg jsonschema onnxruntime-gpu || true
              
-             # 2. ลง Library ปกติก่อน (ให้ได้ Dependencies ครบๆ)
+             # 2. ลง Library ปกติ
              pip install -r requirements.txt
              pip install "dvc[s3]>=3.0" python-dotenv
              
              # 3. สอดไส้ RTX 50 Engine (Nightly Swap)
              echo "🔄 Swapping to Nightly Build..."
              pip uninstall -y torch torchvision torchaudio
-             
-             # ลง Torch Nightly (--no-deps เพื่อเลี่ยง Dependency Hell กับ rembg/timm)
              pip install --pre torch torchvision --index-url https://download.pytorch.org/whl/nightly/cu124 --no-deps
              
-             # 🔥 FIX: ลง Library เสริมของ NVIDIA ให้ครบตระกูล (cusparse, cublas, cudnn, curand, cufft)
-             echo "🔧 Installing missing CUDA libraries..."
-             pip install nvidia-cusparselt-cu12 nvidia-cublas-cu12 nvidia-cudnn-cu12 nvidia-curand-cu12 nvidia-cufft-cu12
+             # 🔥 GOD MODE INSTALL: ลงแม่มทุกอย่างของ NVIDIA
+             echo "🔧 Installing ALL NVIDIA libraries..."
+             pip install nvidia-cuda-runtime-cu12 nvidia-cuda-nvrtc-cu12 \
+                         nvidia-cusparselt-cu12 nvidia-cublas-cu12 \
+                         nvidia-cudnn-cu12 nvidia-curand-cu12 \
+                         nvidia-cufft-cu12 nvidia-nvjitlink-cu12
           fi
           
           # --------------------------------------------------------------------
-          # 🔥 HERO FIX: บังคับ Link ไฟล์ .so ออกมาให้ PyTorch และ ONNX เห็น (ทำทุกรอบ!)
+          # 🔥 GOD MODE LINKING: เชื่อมทุกไฟล์ .so เข้า System (ทำทุกรอบ!)
           # --------------------------------------------------------------------
-          echo "🔗 Linking NVIDIA Libraries (Force Run)..."
+          echo "🔗 Linking ALL NVIDIA Libraries (God Mode)..."
           SITE_PKG=$(python -c "import site; print(site.getsitepackages()[0])")
           
-          # 1. Link cusparse (สำหรับ PyTorch Nightly)
-          ln -sf $SITE_PKG/nvidia/cusparselt/lib/libcusparseLt.so.0 $CONDA_PREFIX/lib/libcusparseLt.so.0
-          ln -sf $SITE_PKG/nvidia/cusparselt/lib/libcusparseLt.so.0 $CONDA_PREFIX/lib/libcusparseLt.so.0.2
+          # วนลูปหาไฟล์ .so ทั้งหมดใน folder nvidia แล้ว link เข้า conda lib
+          find "$SITE_PKG/nvidia" -name "*.so*" -type f | while read -r lib_file; do
+              lib_name=$(basename "$lib_file")
+              # Link ไฟล์ (force overwrite)
+              ln -sf "$lib_file" "$CONDA_PREFIX/lib/$lib_name"
+          done
           
-          # 2. Link cublas & cudnn (สำหรับ ONNX Runtime Core)
-          ln -sf $SITE_PKG/nvidia/cublas/lib/libcublasLt.so.12 $CONDA_PREFIX/lib/libcublasLt.so.12
-          ln -sf $SITE_PKG/nvidia/cublas/lib/libcublas.so.12 $CONDA_PREFIX/lib/libcublas.so.12
-          ln -sf $SITE_PKG/nvidia/cudnn/lib/libcudnn_cnn_infer.so.8 $CONDA_PREFIX/lib/libcudnn_cnn_infer.so.8
+          # Link ไฟล์ที่มี version number ย่อย (กันเหนียว)
+          ln -sf $CONDA_PREFIX/lib/libcublas.so.12 $CONDA_PREFIX/lib/libcublas.so || true
+          ln -sf $CONDA_PREFIX/lib/libcudart.so.12 $CONDA_PREFIX/lib/libcudart.so || true
           
-          # 3. 🔥 Link curand & cufft (ตัวที่เพิ่ง error + ตัวแถม)
-          # curand (Random Number Generator)
-          ln -sf $SITE_PKG/nvidia/curand/lib/libcurand.so.10 $CONDA_PREFIX/lib/libcurand.so.10
-          # cufft (Fast Fourier Transform - เผื่อไว้ก่อน)
-          ln -sf $SITE_PKG/nvidia/cufft/lib/libcufft.so.11 $CONDA_PREFIX/lib/libcufft.so.11
+          # 🔥 EXPORT LD_LIBRARY_PATH (สำคัญมากสำหรับ PyTorch)
+          export LD_LIBRARY_PATH=$CONDA_PREFIX/lib:$LD_LIBRARY_PATH
           
-          # 4. Export LD_LIBRARY_PATH (กันเหนียวอีกชั้น)
-          export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$CONDA_PREFIX/lib
-          
-          echo "✅ All Libraries Linked Successfully!"
+          echo "✅ All Libraries Linked (God Mode Complete)!"
           
           # Final Check
           python -c "import torch; print(f'🔥 Torch: {torch.__version__}, GPU: {torch.cuda.get_device_name(0) if torch.cuda.is_available() else None}')"
@@ -111,13 +108,8 @@ jobs:
       - name: 🔗 Link Real Data (Input Only)
         run: |
           echo "🔗 Linking inputs only..."
-          
-          # ลบ data เก่าใน Runner ทิ้ง
           rm -rf data
-          # สร้าง folder จริง (เพื่อให้ DVC เขียน output ลงในนี้ได้ ไม่ error outside repo)
           mkdir -p data
-          
-          # Link เฉพาะไฟล์ดิบ (Input) เข้ามา
           if [ -d "$REAL_PROJECT_PATH/data/raw_box" ]; then
             ln -sfn "$REAL_PROJECT_PATH/data/raw_box" ./data/raw_box
             ln -sfn "$REAL_PROJECT_PATH/data/raw_pill" ./data/raw_pill
@@ -126,7 +118,6 @@ jobs:
              echo "❌ Error: Raw data not found at $REAL_PROJECT_PATH/data"
              exit 1
           fi
-          ls -F data/
 
       # 4. ตั้งค่า AWS S3
       - name: ☁️ Configure AWS Credentials
@@ -151,8 +142,8 @@ jobs:
           source ~/miniconda3/etc/profile.d/conda.sh
           conda activate pilltrack
           
-          # 🔥 EXPORT LD_LIBRARY_PATH (สำคัญมากสำหรับ ONNX)
-          export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$CONDA_PREFIX/lib
+          # 🔥 EXPORT LD_LIBRARY_PATH (ต้องใส่ทุก Step ที่รัน Python)
+          export LD_LIBRARY_PATH=$CONDA_PREFIX/lib:$LD_LIBRARY_PATH
           
           TAG_NAME=${GITHUB_REF#refs/tags/}
           echo "🏷️ Processing Tag: $TAG_NAME"

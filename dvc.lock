@@ -6,28 +6,28 @@ stages:
     deps:
     - path: data/raw_box
       hash: md5
-      md5: 8a53412045e6a4e36fc6b4963bd8b928.dir
-      size: 31923180
-      nfiles: 658
+      md5: 9ef362b7da2b779723faebe56dab1d40.dir
+      size: 31883861
+      nfiles: 657
     - path: src/data/remove_background.py
       hash: md5
-      md5: 190aaa62faa77ea8fdc3b4adbfae9230
-      size: 4718
+      md5: 380ee30fedf4953bc5ee931841cd0ee7
+      size: 4105
     outs:
     - path: data/processed_box
       hash: md5
-      md5: d751713988987e9331980363e24189ce.dir
-      size: 0
-      nfiles: 0
+      md5: 075a473e593613d9280ac51c1838a2bf.dir
+      size: 88950387
+      nfiles: 651
   split_box:
     cmd: python src/data/split_data.py --input data/processed_box --output 
       data/dataset_split_box
     deps:
     - path: data/processed_box
       hash: md5
-      md5: d751713988987e9331980363e24189ce.dir
-      size: 0
-      nfiles: 0
+      md5: 075a473e593613d9280ac51c1838a2bf.dir
+      size: 88950387
+      nfiles: 651
     - path: src/data/split_data.py
       hash: md5
       md5: 028308f6ef18eb9f907c165ea0303708
@@ -41,18 +41,18 @@ stages:
     outs:
     - path: data/dataset_split_box
       hash: md5
-      md5: d751713988987e9331980363e24189ce.dir
-      size: 0
-      nfiles: 0
+      md5: 6aa8a010872f4f766326453d680ce4ae.dir
+      size: 88950387
+      nfiles: 651
   augment_box:
     cmd: python src/data/augment.py --input data/dataset_split_box/train 
       --output data/dataset_train_final_box --type box
     deps:
     - path: data/dataset_split_box/train
       hash: md5
-      md5: d751713988987e9331980363e24189ce.dir
-      size: 0
-      nfiles: 0
+      md5: 08d7022731ddacb90bad0cc40b2a3aa4.dir
+      size: 60269510
+      nfiles: 440
     - path: src/data/augment.py
       hash: md5
       md5: ec107f83c0410206702b58e27f35bd69
@@ -73,9 +73,9 @@ stages:
     outs:
     - path: data/dataset_train_final_box
       hash: md5
-      md5: d751713988987e9331980363e24189ce.dir
-      size: 0
-      nfiles: 0
+      md5: 16bdd8109713a9e5377ff6ccf6f45c3e.dir
+      size: 1208000132
+      nfiles: 9320
   train_box:
     cmd: python src/train.py --train_dir data/dataset_train_final_box --val_dir 
       data/dataset_split_box/val --output_dir experiments/arcface_lite_v1/box 
