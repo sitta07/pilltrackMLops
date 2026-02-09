@@ -86,8 +86,18 @@ if __name__ == "__main__":
     parser.add_argument("--arch", default="convnext_small", help="Model architecture")
     args = parser.parse_args()
 
-    device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
-    
+    # 🔥 UPDATE: เพิ่มการเช็ค CUDA สำหรับ RTX 5060 Ti
+    # -----------------------------------------------------------
+    if torch.cuda.is_available():
+        device = torch.device("cuda")
+        print(f"🚀 Using GPU: {torch.cuda.get_device_name(0)}")
+    elif torch.backends.mps.is_available():
+        device = torch.device("mps")
+        print("🍏 Using Apple MPS")
+    else:
+        device = torch.device("cpu")
+        print("⚠️ Using CPU")
+    # -----------------------------------------------------------    
     try:
         print("-" * 50)
         print(f"🔍 Inspecting: {args.image}")

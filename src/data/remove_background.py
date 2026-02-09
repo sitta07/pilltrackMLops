@@ -19,9 +19,19 @@ def process_background_removal(input_root, output_root, model_type='base'):
         raise FileNotFoundError(f"❌ Input folder not found: {input_root}")
 
     # 2. Setup Device
-    device = 'mps' if torch.backends.mps.is_available() else 'cpu'
-    if torch.cuda.is_available(): device = 'cuda'
-    
+    # -----------------------------------------------------------
+    # 🔥 UPDATE: เพิ่มการเช็ค CUDA สำหรับ RTX 5060 Ti
+    # -----------------------------------------------------------
+    if torch.cuda.is_available():
+        device = torch.device("cuda")
+        print(f"🚀 Using GPU: {torch.cuda.get_device_name(0)}")
+    elif torch.backends.mps.is_available():
+        device = torch.device("mps")
+        print("🍏 Using Apple MPS")
+    else:
+        device = torch.device("cpu")
+        print("⚠️ Using CPU")
+   
     logger.info(f"⚡ Using device: {device.upper()}")
     
     # 3. Scan Files First (เพื่อดูว่าต้องทำกี่รูป)
