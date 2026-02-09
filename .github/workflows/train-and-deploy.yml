@@ -3,11 +3,11 @@ name: 💊 PillTrack AI Pipeline (RTX 5060 Ti Optimized)
 on:
   push:
     tags:
-      - 'major-*'     # e.g., major-box-v1.0 (Full Train)
-      - 'minor-*'     # e.g., minor-box-v1.1 (Incremental/Finetune)
-      - 'pill-*'      # Generic pill tag
-      - 'box-*'       # Generic box tag
-  workflow_dispatch:  # ปุ่มกดรันเองผ่านเว็บ
+      - 'major-*'     # e.g., major-box-v1.0
+      - 'minor-*'     # e.g., minor-box-v1.1
+      - 'pill-*'
+      - 'box-*'
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -15,60 +15,52 @@ permissions:
 jobs:
   train-and-deploy:
     name: 🚀 Training on Self-Hosted GPU
-    # 🔥 สั่งให้รันบนเครื่องตัวเองที่มี GPU
     runs-on: [self-hosted, linux, gpu]
     
     env:
       PYTHONUNBUFFERED: "1"
-      # ✅ Path จริงของโปรเจกต์ในเครื่องคุณ (ห้ามผิด)
       REAL_PROJECT_PATH: "/home/admin-sitta/pilltrackMLops"
       HF_TOKEN: ${{ secrets.HF_TOKEN }}
 
     steps:
-      # 1. ดึงโค้ดล่าสุดจาก GitHub
       - name: 📥 Checkout Code
         uses: actions/checkout@v3
         with:
           fetch-depth: 0
 
-      # 2. เตรียม Environment & แก้บั๊ก RTX 50 Series (Dependency Fix + Syntax Fix)
-      - name: ⚙️ Setup Environment (Force RTX 50 Support)
+      # ------------------------------------------------------------------
+      # 🔥 HERO FIX: สลับลำดับการลง (The Sandwich Strategy)
+      # 1. ลง Requirements ปกติก่อน (ให้ได้ Torch Stable)
+      # 2. ลบ Torch Stable ทิ้ง
+      # 3. ลง Torch Nightly ทับลงไป (เพื่อให้ใช้ RTX 50 ได้)
+      # ------------------------------------------------------------------
+      - name: ⚙️ Setup Environment (Dependency Swap Fix)
         shell: bash
         run: |
           echo "🐍 Activating Conda Environment..."
           source ~/miniconda3/etc/profile.d/conda.sh
           conda activate pilltrack
           
-          echo "🔧 Optimizing for RTX 5060 Ti (Blackwell)..."
-          
-          # 1. ลบของเก่าออกให้หมดก่อน (Clean Slate)
-          pip uninstall -y torch torchvision torchaudio
-          
-          # 2. ลง Torch ตัวหลัก (Nightly Build for CUDA 12.4)
-          echo "⬇️ Installing Torch Nightly..."
-          pip install --pre torch --index-url https://download.pytorch.org/whl/nightly/cu124
-          
-          # 3. ลง Torchvision แบบ "Force Install" (--no-deps)
-          # เพื่อข้ามการเช็ค Version Match ที่มักจะพังใน Nightly Build
-          echo "⬇️ Installing Torchvision (No Deps Mode)..."
-          pip install --pre torchvision --index-url https://download.pytorch.org/whl/nightly/cu124 --no-deps
-          
-          # 4. เช็คของ (🔥 แก้ Syntax Error แล้ว: ลบ ' ' รอบคำว่า None ออก)
-          python -c "import torch; print(f'🔥 Torch: {torch.__version__}, CUDA: {torch.version.cuda}, GPU: {torch.cuda.get_device_name(0) if torch.cuda.is_available() else None}')"
-          
-          # ลง Library อื่นๆ ตามปกติ
+          echo "📦 Phase 1: Installing Standard Dependencies..."
+          # ลง libs ทั่วไปก่อน (ยอมให้มันลง torch เก่าไปก่อน)
           pip install -r requirements.txt -i https://mirror.kku.ac.th/pypi/web/simple
           pip install "dvc[s3]>=3.0" python-dotenv
+          
+          echo "🔄 Phase 2: Swapping Engine to RTX 50 (Nightly)..."
+          # ลบ torch เก่าทิ้ง
+          pip uninstall -y torch torchvision torchaudio
+          
+          # ลง Nightly ตัวใหม่ (Index URL พิเศษ)
+          echo "⬇️ Installing Torch Nightly..."
+          pip install --pre torch torchvision --index-url https://download.pytorch.org/whl/nightly/cu124
+          
+          # เช็คของ (แก้ Syntax Error แล้ว)
+          python -c "import torch; print(f'🔥 Torch: {torch.__version__}, CUDA: {torch.version.cuda}, GPU: {torch.cuda.get_device_name(0) if torch.cuda.is_available() else None}')"
 
-      # 3. เชื่อมต่อข้อมูลจริง (Smart Link)
       - name: 🔗 Link Real Data
         run: |
           echo "🔗 Linking data from $REAL_PROJECT_PATH/data"
-          
-          # ลบ folder data เปล่าๆ ที่ติดมากับ git (ถ้ามี)
           rm -rf data
-          
-          # สร้างทางลัด (Symlink) ไปหาข้อมูลจริง
           if [ -d "$REAL_PROJECT_PATH/data" ]; then
             ln -sfn "$REAL_PROJECT_PATH/data" ./data
             echo "✅ Data Linked Successfully!"
@@ -78,7 +70,6 @@ jobs:
             exit 1
           fi
 
-      # 4. ตั้งค่า AWS S3
       - name: ☁️ Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v2
         with:
@@ -86,7 +77,6 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ap-southeast-1
 
-      # 5. ดึงไฟล์ DVC
       - name: 📥 DVC Pull
         shell: bash
         run: |
@@ -94,7 +84,6 @@ jobs:
           conda activate pilltrack
           dvc pull experiments/ metrics/ --force || echo "⚠️ No models on S3 yet, starting fresh."
 
-      # 6. รัน Pipeline หลัก
       - name: 🤖 Run AI Pipeline (GPU Accelerated)
         shell: bash
         run: |
@@ -104,13 +93,10 @@ jobs:
           TAG_NAME=${GITHUB_REF#refs/tags/}
           echo "🏷️ Processing Tag: $TAG_NAME"
           
-          # ---------------------------------------------------------
-          # 📦 BOX WORKFLOW
-          # ---------------------------------------------------------
+          # --- BOX WORKFLOW ---
           if [[ "$TAG_NAME" =~ "box" ]]; then
             if [[ "$TAG_NAME" =~ "major" ]]; then
               echo "🔴 Major Box: Full Training..."
-              # ตอนนี้ preprocess_box จะเร็วปรี๊ดเพราะใช้ GPU ได้แล้ว
               dvc repro train_box -f
             else
               echo "🟢 Minor Box: Incremental Learning..."
@@ -121,9 +107,7 @@ jobs:
             fi
           fi
           
-          # ---------------------------------------------------------
-          # 💊 PILL WORKFLOW
-          # ---------------------------------------------------------
+          # --- PILL WORKFLOW ---
           if [[ "$TAG_NAME" =~ "pill" ]]; then
             if [[ "$TAG_NAME" =~ "major" ]]; then
               echo "🔴 Major Pill: Full Training..."
@@ -137,7 +121,6 @@ jobs:
             fi
           fi
 
-      # 7. ส่งผลลัพธ์ขึ้น S3
       - name: 💾 Push Artifacts to S3
         if: success()
         run: |
@@ -145,7 +128,6 @@ jobs:
           conda activate pilltrack
           dvc push
 
-      # 8. Sync กลับมาที่เครื่องจริง
       - name: 🔄 Sync Results Back to Local Workspace
         if: always()
         run: |
@@ -155,7 +137,6 @@ jobs:
           cp dvc.lock "$REAL_PROJECT_PATH/" || true
           echo "✅ Sync Complete! Open VS Code to see results."
 
-      # 9. Update dvc.lock บน GitHub
       - name: 📤 Git Commit DVC Lock
         if: success()
         run: |
