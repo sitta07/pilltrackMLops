@@ -9,5 +9,6 @@ timm
 python-dotenv
 pyyaml
 boto3
-transparent_background
+rembg[gpu]
+onnxruntime-gpu
 Pillow
