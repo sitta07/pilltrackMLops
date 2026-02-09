@@ -30,8 +30,8 @@ jobs:
         with:
           fetch-depth: 0
 
-      # 2. เตรียม Environment (Smart Cache + RTX 50 Fixes)
-      - name: ⚙️ Setup Environment (Smart Cache & RTX 50 Fix)
+      # 2. เตรียม Environment (Smart Cache + RTX 50 Fix + ONNX Fix)
+      - name: ⚙️ Setup Environment (Ultimate Fix)
         shell: bash
         run: |
           echo "🐍 Activating Conda Environment..."
@@ -56,7 +56,7 @@ jobs:
              echo "🚀 Starting Fresh Install (The Sandwich Strategy)..."
              
              # 1. ล้างบางของเก่าทิ้งให้หมด (กันตีกัน)
-             pip uninstall -y torch torchvision torchaudio timm kornia transparent-background rembg jsonschema || true
+             pip uninstall -y torch torchvision torchaudio timm kornia transparent-background rembg jsonschema onnxruntime-gpu || true
              
              # 2. ลง Library ปกติก่อน (ให้ได้ Dependencies ครบๆ)
              pip install -r requirements.txt
@@ -69,16 +69,27 @@ jobs:
              # ลง Torch Nightly (--no-deps เพื่อเลี่ยง Dependency Hell กับ rembg/timm)
              pip install --pre torch torchvision --index-url https://download.pytorch.org/whl/nightly/cu124 --no-deps
              
-             # 🔥 FIX: ลง Library เสริมของ NVIDIA ที่มักจะหายไป
+             # 🔥 FIX: ลง Library เสริมของ NVIDIA ที่มักจะหายไป และจำเป็นสำหรับ rembg/ONNX
              echo "🔧 Installing missing CUDA libraries..."
-             pip install nvidia-cusparselt-cu12
+             pip install nvidia-cusparselt-cu12 nvidia-cublas-cu12 nvidia-cudnn-cu12
              
-             # 🔥 HERO FIX: บังคับ Link ไฟล์ .so ออกมาให้ PyTorch เห็น (แก้ ImportError: libcusparseLt.so.0)
-             echo "🔗 Manually linking libcusparseLt.so.0..."
+             # -------------------------------------------------------------
+             # 🔥 HERO FIX: บังคับ Link ไฟล์ .so ออกมาให้ PyTorch และ ONNX เห็น
+             # -------------------------------------------------------------
+             echo "🔗 Linking NVIDIA Libraries..."
              SITE_PKG=$(python -c "import site; print(site.getsitepackages()[0])")
+             
+             # 1. Link cusparse (สำหรับ PyTorch Nightly)
              ln -sf $SITE_PKG/nvidia/cusparselt/lib/libcusparseLt.so.0 $CONDA_PREFIX/lib/libcusparseLt.so.0
              ln -sf $SITE_PKG/nvidia/cusparselt/lib/libcusparseLt.so.0 $CONDA_PREFIX/lib/libcusparseLt.so.0.2
-             echo "✅ Library Linked!"
+             
+             # 2. Link cublas & cudnn (สำหรับ ONNX Runtime / rembg GPU)
+             # ต้อง Link ทั้ง .so.12 และชื่อเต็ม เพื่อความชัวร์
+             ln -sf $SITE_PKG/nvidia/cublas/lib/libcublasLt.so.12 $CONDA_PREFIX/lib/libcublasLt.so.12
+             ln -sf $SITE_PKG/nvidia/cublas/lib/libcublas.so.12 $CONDA_PREFIX/lib/libcublas.so.12
+             ln -sf $SITE_PKG/nvidia/cudnn/lib/libcudnn_cnn_infer.so.8 $CONDA_PREFIX/lib/libcudnn_cnn_infer.so.8
+             
+             echo "✅ All Libraries Linked!"
           fi
           
           # Final Check
