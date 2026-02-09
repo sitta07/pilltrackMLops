@@ -1,4 +1,4 @@
-name: 💊 PillTrack AI Pipeline (RTX 5060 Ti Optimized)
+name: 💊 PillTrack AI Pipeline (RTX 5060 Ti Smart)
 
 on:
   push:
@@ -28,32 +28,47 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: ⚙️ Setup Environment (Final Fix)
+      - name: ⚙️ Setup Environment (Smart Cache & RTX 50 Fix)
         shell: bash
         run: |
           echo "🐍 Activating Conda Environment..."
           source ~/miniconda3/etc/profile.d/conda.sh
           conda activate pilltrack
           
-          echo "🧹 Cleaning up potential conflicts..."
-          # ลบทุกอย่างที่เกี่ยวข้องกับ Torch ออกก่อน เพื่อเริ่มใหม่แบบคลีนๆ
-          pip uninstall -y torch torchvision torchaudio timm kornia transparent-background || true
+          echo "🔍 Checking existing PyTorch version..."
           
-          echo "📦 Phase 1: Installing Standard Dependencies..."
-          # ลง requirements ปกติ (ใช้ Server หลัก PyPI ช้าหน่อยแต่ชัวร์)
-          pip install -r requirements.txt
-          pip install "dvc[s3]>=3.0" python-dotenv
+          # เช็คว่ามี Torch Dev (Nightly) และ GPU พร้อมไหม
+          if python -c "import torch; exit(0) if 'dev' in torch.__version__ and torch.cuda.is_available() else exit(1)"; then
+             echo "✅ RTX 50 Ready! (Torch Nightly detected)"
+             echo "⏩ Skipping heavy installation..."
+             pip install -r requirements.txt --no-deps
+             pip install "dvc[s3]>=3.0" python-dotenv
+             
+          else
+             echo "🛑 Environment needs update for RTX 5060 Ti..."
+             echo "🚀 Starting Fresh Install (The Sandwich Strategy)..."
+             
+             # 1. ล้างบาง
+             pip uninstall -y torch torchvision torchaudio timm kornia transparent-background || true
+             
+             # 2. ลง Library ปกติ
+             pip install -r requirements.txt
+             pip install "dvc[s3]>=3.0" python-dotenv
+             
+             # 3. สอดไส้ RTX 50 Engine
+             echo "🔄 Swapping to Nightly Build..."
+             pip uninstall -y torch torchvision torchaudio
+             
+             # ลง Torch Nightly (--no-deps เพื่อเลี่ยง Dependency Hell)
+             pip install --pre torch torchvision --index-url https://download.pytorch.org/whl/nightly/cu124 --no-deps
+             
+             # 🔥 FIX: ลง Library สำคัญที่หายไปเพราะ --no-deps
+             echo "🔧 Installing missing CUDA libraries..."
+             pip install nvidia-cusparselt-cu12
+          fi
           
-          echo "🔄 Phase 2: Upgrading to RTX 50 Engine (Nightly)..."
-          # ลบ Torch Stable ทิ้ง
-          pip uninstall -y torch torchvision torchaudio
-          
-          # ลง Torch Nightly (RTX 50 Support) ทับลงไป
-          # ใช้ --no-deps เพื่อบังคับลง โดยไม่สนว่า timm จะบ่น
-          pip install --pre torch torchvision --index-url https://download.pytorch.org/whl/nightly/cu124 --no-deps
-          
-          # Verify
-          python -c "import torch; print(f'🔥 Torch: {torch.__version__}, CUDA: {torch.version.cuda}, GPU: {torch.cuda.get_device_name(0) if torch.cuda.is_available() else None}')"
+          # Final Check
+          python -c "import torch; print(f'🔥 Torch: {torch.__version__}, GPU: {torch.cuda.get_device_name(0) if torch.cuda.is_available() else None}')"
 
       - name: 🔗 Link Real Data
         run: |
