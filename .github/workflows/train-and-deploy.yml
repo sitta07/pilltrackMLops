@@ -1,187 +1,169 @@
-name: PillTrack MLOps Pipeline 💊
+name: 💊 PillTrack AI Pipeline (Self-Hosted GPU)
 
 on:
   push:
     tags:
-      - 'v*'
-      - 'pill-*'
-      - 'box-*'
-      - 'major-pill-*'
-      - 'major-box-*'
+      - 'major-*'     # e.g., major-box-v1.0 (Full Train)
+      - 'minor-*'     # e.g., minor-box-v1.1 (Incremental/Finetune)
+      - 'pill-*'      # Generic pill tag
+      - 'box-*'       # Generic box tag
+  workflow_dispatch:  # ปุ่มกดรันเองผ่านเว็บ
 
 permissions:
   contents: write
 
 jobs:
   train-and-deploy:
-    name: Smart Training Pipeline
-    runs-on: self-hosted
+    name: 🚀 Training on RTX 5060 Ti
+    # 🔥 สั่งให้รันบนเครื่องตัวเองที่มี GPU
+    runs-on: [self-hosted, linux, gpu]
+    
     env:
       PYTHONUNBUFFERED: "1"
-      # ใส่ Token เพื่อแก้ปัญหา Rate Limit ของ Hugging Face
+      # ✅ Path จริงของโปรเจกต์ในเครื่องคุณ (ห้ามผิด)
+      REAL_PROJECT_PATH: "/home/admin-sitta/pilltrackMLops"
       HF_TOKEN: ${{ secrets.HF_TOKEN }}
 
     steps:
-      - name: Checkout Code
+      # 1. ดึงโค้ดล่าสุดจาก GitHub
+      - name: 📥 Checkout Code
         uses: actions/checkout@v3
         with:
           fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Set Global Environment Variables
+      # 2. เตรียม Environment (ใช้ Conda ที่มีอยู่แล้ว)
+      - name: ⚙️ Setup Environment (Conda & GPU)
+        shell: bash
         run: |
-          TAG=${GITHUB_REF#refs/tags/}
-          echo "TAG_NAME=$TAG" >> $GITHUB_ENV
+          echo "🐍 Activating Conda Environment..."
+          # เรียกใช้ Conda โดยตรง
+          source ~/miniconda3/etc/profile.d/conda.sh
+          conda activate pilltrack
+          
+          # เช็คความพร้อม GPU
+          echo "============================================="
+          echo "🖥️ Running on Host: $(hostname)"
+          echo "🔥 GPU Status:"
+          nvidia-smi
+          echo "============================================="
+          
+          # อัปเดต Library (ใช้ Mirror ไทยเพื่อความเร็ว)
+          pip install -r requirements.txt -i https://mirror.kku.ac.th/pypi/web/simple
+          pip install "dvc[s3]>=3.0" python-dotenv
 
-      # ✅ [Universal Path] หา Path เองอัตโนมัติ
-      - name: 🔗 Link Local Dataset to Runner (Universal)
+      # 3. เชื่อมต่อข้อมูลจริง (แก้ปัญหาหาไฟล์ไม่เจอ)
+      - name: 🔗 Link Real Data (Smart Link)
         run: |
-          TARGET_DATA_PATH="$HOME/pilltrackMLops/data"
-          echo "🔍 Auto-detecting dataset at: $TARGET_DATA_PATH"
-          mkdir -p data
+          echo "🔗 Linking data from $REAL_PROJECT_PATH/data"
           
-          if [ -d "$TARGET_DATA_PATH/raw_box" ]; then
-             ln -sfn "$TARGET_DATA_PATH/raw_box" ./data/raw_box
-          fi
+          # ลบ folder data เปล่าๆ ที่ติดมากับ git (ถ้ามี)
+          rm -rf data
           
-          if [ -d "$TARGET_DATA_PATH/raw_pill" ]; then
-            ln -sfn "$TARGET_DATA_PATH/raw_pill" ./data/raw_pill
-          elif [ -d "$TARGET_DATA_PATH/raw" ]; then
-            ln -sfn "$TARGET_DATA_PATH/raw" ./data/raw_pill
+          # สร้างทางลัด (Symlink) ไปหาข้อมูลจริง
+          if [ -d "$REAL_PROJECT_PATH/data" ]; then
+            ln -sfn "$REAL_PROJECT_PATH/data" ./data
+            echo "✅ Data Linked Successfully!"
+            ls -F data/
           else
-            echo "❌ ERROR: Pill dataset not found!"
+            echo "❌ ERROR: Real data path not found at $REAL_PROJECT_PATH/data"
             exit 1
           fi
 
-      - name: Setup Venv
-        run: |
-          if [ ! -d "venv" ]; then /opt/homebrew/bin/python3.10 -m venv venv; fi
-          echo "$PWD/venv/bin" >> $GITHUB_PATH
-
-      - name: Install Dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install Pillow transparent-background
-          pip install -r requirements.txt
-          pip install "dvc[s3]>=3.0" python-dotenv
-
-      - name: Configure AWS
+      # 4. ตั้งค่า AWS S3 (สำหรับ DVC)
+      - name: ☁️ Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v2
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ secrets.AWS_REGION }}
+          aws-region: ap-southeast-1
 
-      - name: DVC Pull Models (Global)
+      # 5. ดึงไฟล์ DVC ล่าสุด (DVC Pull)
+      - name: 📥 DVC Pull
+        shell: bash
         run: |
-          dvc remote modify myremote --local access_key_id ${{ secrets.AWS_ACCESS_KEY_ID }}
-          dvc remote modify myremote --local secret_access_key ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          dvc pull experiments/ metrics/ --force || echo "⚠️ No models on S3 yet."
+          source ~/miniconda3/etc/profile.d/conda.sh
+          conda activate pilltrack
+          # ดึงเฉพาะ metrics และ experiments เพื่อความเร็ว
+          dvc pull experiments/ metrics/ --force || echo "⚠️ No models on S3 yet, starting fresh."
 
-      # ✅ [Logic หลัก] แยก Major/Incremental และ Auto-Fetch Base Model
-      - name: Run Pipeline
+      # 6. รัน Pipeline หลัก (หัวใจสำคัญ)
+      - name: 🤖 Run AI Pipeline
+        shell: bash
         run: |
+          source ~/miniconda3/etc/profile.d/conda.sh
+          conda activate pilltrack
+          
+          # ดึงชื่อ Tag
+          TAG_NAME=${GITHUB_REF#refs/tags/}
           echo "🏷️ Processing Tag: $TAG_NAME"
           
-          # --- BOX Workflow ---
+          # ---------------------------------------------------------
+          # 📦 BOX WORKFLOW
+          # ---------------------------------------------------------
           if [[ "$TAG_NAME" =~ "box" ]]; then
             if [[ "$TAG_NAME" =~ "major" ]]; then
-              echo "🔴 Major Box: Full Train"
+              echo "🔴 Major Box: Full Training (Backbone + Head)..."
+              # ลบพื้นหลัง (Force CPU) -> Split -> Augment -> Train -> Eval
               dvc repro train_box -f
             else
-              echo "🟢 Incremental Box: Finetune Only"
-              echo "📥 Fetching Base Box Model..."
-              dvc pull experiments/arcface_lite_v1/box --force || echo "⚠️ Base model not found!"
-              
+              echo "🟢 Minor Box: Incremental Learning (Head Only)..."
+              # ข้าม Training ใหญ่ ไป Finetune เลย
               dvc repro augment_box
-              dvc commit train_box -f 
+              dvc commit train_box -f  # หลอก DVC ว่าเทรนเสร็จแล้ว (ข้าม)
+              python src/finetune.py --type box
               dvc repro evaluate_box
             fi
           fi
           
-          # --- PILL Workflow ---
+          # ---------------------------------------------------------
+          # 💊 PILL WORKFLOW
+          # ---------------------------------------------------------
           if [[ "$TAG_NAME" =~ "pill" ]]; then
             if [[ "$TAG_NAME" =~ "major" ]]; then
-              echo "🔴 Major Pill: Full Train"
+              echo "🔴 Major Pill: Full Training..."
               dvc repro train_pill -f
             else
-              echo "🟢 Incremental Pill: Finetune Only"
-              echo "📥 Fetching Base Pill Model..."
-              dvc pull experiments/arcface_lite_v1/pill --force || echo "⚠️ Base model not found!"
-              
+              echo "🟢 Minor Pill: Incremental Learning..."
               dvc repro augment_pill
               dvc commit train_pill -f
-              dvc repro finetune_pill
+              python src/finetune.py --type pill
               dvc repro evaluate_pill
             fi
           fi
 
-      # ✅ [Fix Overlaps Error] Promote Model: ใช้ dvc commit แทน dvc add
-      - name: 🔄 Promote Finetuned to Base Model
-        if: success() && !contains(env.TAG_NAME, 'major')
+      # 7. ส่งผลลัพธ์ขึ้น S3
+      - name: 💾 Push Artifacts to S3
+        if: success()
         run: |
-          echo "🏆 Promoting Finetuned Model to Base Model..."
-          
-          # Logic สำหรับ Pill
-          if [[ "$TAG_NAME" =~ "pill" ]]; then
-            cp -R experiments/arcface_finetuned/pill/* experiments/arcface_lite_v1/pill/
-            
-            # ใช้ dvc commit เพื่ออัปเดต output ของ stage เดิม (ไม่สร้าง tracking ซ้ำซ้อน)
-            dvc commit train_pill -f
-            
-            echo "✅ Pill Model Promoted!"
-          fi
-          
-          # Logic สำหรับ Box
-          if [[ "$TAG_NAME" =~ "box" ]]; then
-            cp -R experiments/arcface_finetuned/box/* experiments/arcface_lite_v1/box/
-            dvc commit train_box -f
-            echo "✅ Box Model Promoted!"
-          fi
+          source ~/miniconda3/etc/profile.d/conda.sh
+          conda activate pilltrack
+          dvc push
 
-      - name: Push Artifacts to DVC
-        run: dvc push
-
-      # ✅ [Fix Git Error] ลบการ add *.dvc เพราะเราใช้ commit ลง dvc.lock แล้ว
-      - name: 🆙 Update Lockfile & Promotion to GitHub
+      # 8. (สำคัญมาก) ก๊อปปี้ผลลัพธ์กลับมาที่ Project จริง ให้คุณดูได้เลย
+      - name: 🔄 Sync Results Back to Local Workspace
+        if: always()
         run: |
-          git config --local user.email "github-actions[bot]@users.noreply.github.com"
-          git config --local user.name "github-actions[bot]"
+          echo "🚀 Syncing results back to: $REAL_PROJECT_PATH"
           
-          # Add แค่ dvc.lock ก็พอ เพราะ hash ทุกอย่างรวมอยู่ในนี้แล้ว
+          # Copy experiments (Model Files)
+          cp -r experiments "$REAL_PROJECT_PATH/" || true
+          
+          # Copy metrics (JSON Report)
+          cp -r metrics "$REAL_PROJECT_PATH/" || true
+          
+          # Copy dvc.lock (State ล่าสุด)
+          cp dvc.lock "$REAL_PROJECT_PATH/" || true
+          
+          echo "✅ Sync Complete! Open VS Code to see results."
+
+      # 9. อัปเดต dvc.lock ขึ้น GitHub อัตโนมัติ
+      - name: 📤 Git Commit DVC Lock
+        if: success()
+        run: |
+          git config --local user.email "bot@pilltrack.ai"
+          git config --local user.name "PillTrack Bot"
+          
           git add dvc.lock
-          
-          if git diff --staged --quiet; then
-            echo "No changes in dvc.lock"
-          else
-            git commit -m "🆙 update models & promote new base model [skip ci]"
-            git push origin HEAD:main
-          fi
-
-      - name: Deploy to S3 Releases
-        run: |
-          CLEAN_VER=$(echo $TAG_NAME | sed 's/major-//' | sed 's/pill-//' | sed 's/box-//')
-          if [[ "$TAG_NAME" =~ "pill" ]]; then MODEL_TYPE="pill"; else MODEL_TYPE="box"; fi
-          
-          if [[ "$TAG_NAME" =~ "major" ]]; then
-             PATH_TYPE="arcface_lite_v1"
-          else
-             PATH_TYPE="arcface_finetuned"
-          fi
-          
-          python src/deploy.py \
-            --version "$CLEAN_VER" \
-            --path "experiments/$PATH_TYPE" \
-            --type "$MODEL_TYPE" \
-            --bucket "${{ secrets.S3_BUCKET_NAME }}" \
-            --note "Auto-deployed for $TAG_NAME"
-
-      - name: ⚡️ Sync Models to Local Dev Workspace
-        run: |
-          DEV_WORKSPACE="$HOME/pilltrackMLops"
-          echo "🚀 Teleporting models to: $DEV_WORKSPACE"
-          if [ -d "$DEV_WORKSPACE" ]; then
-            cp -R experiments/ "$DEV_WORKSPACE/experiments/"
-            cp -R metrics/ "$DEV_WORKSPACE/metrics/" || true
-            echo "✅ Sync Complete!"
-          fi
+          # Commit ข้าม CI เพื่อกัน Loop นรก
+          git commit -m "🤖 auto: update dvc lockfile [skip ci]" || echo "No changes to commit"
+          git push origin HEAD:main || echo "Push failed (maybe conflicts), skipping..."
