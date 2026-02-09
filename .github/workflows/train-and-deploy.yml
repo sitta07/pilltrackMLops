@@ -28,33 +28,31 @@ jobs:
         with:
           fetch-depth: 0
 
-      # ------------------------------------------------------------------
-      # 🔥 HERO FIX: สลับลำดับการลง (The Sandwich Strategy)
-      # 1. ลง Requirements ปกติก่อน (ให้ได้ Torch Stable)
-      # 2. ลบ Torch Stable ทิ้ง
-      # 3. ลง Torch Nightly ทับลงไป (เพื่อให้ใช้ RTX 50 ได้)
-      # ------------------------------------------------------------------
-      - name: ⚙️ Setup Environment (Dependency Swap Fix)
+      - name: ⚙️ Setup Environment (Final Fix)
         shell: bash
         run: |
           echo "🐍 Activating Conda Environment..."
           source ~/miniconda3/etc/profile.d/conda.sh
           conda activate pilltrack
           
+          echo "🧹 Cleaning up potential conflicts..."
+          # ลบทุกอย่างที่เกี่ยวข้องกับ Torch ออกก่อน เพื่อเริ่มใหม่แบบคลีนๆ
+          pip uninstall -y torch torchvision torchaudio timm kornia transparent-background || true
+          
           echo "📦 Phase 1: Installing Standard Dependencies..."
-          # ลง libs ทั่วไปก่อน (ยอมให้มันลง torch เก่าไปก่อน)
+          # ลง requirements ปกติ (ยอมให้มันลง Torch Stable มาก่อน)
           pip install -r requirements.txt -i https://mirror.kku.ac.th/pypi/web/simple
           pip install "dvc[s3]>=3.0" python-dotenv
           
-          echo "🔄 Phase 2: Swapping Engine to RTX 50 (Nightly)..."
-          # ลบ torch เก่าทิ้ง
+          echo "🔄 Phase 2: Upgrading to RTX 50 Engine (Nightly)..."
+          # ลบ Torch Stable ทิ้ง
           pip uninstall -y torch torchvision torchaudio
           
-          # ลง Nightly ตัวใหม่ (Index URL พิเศษ)
-          echo "⬇️ Installing Torch Nightly..."
-          pip install --pre torch torchvision --index-url https://download.pytorch.org/whl/nightly/cu124
+          # ลง Torch Nightly (RTX 50 Support) ทับลงไป
+          # ใช้ --no-deps เพื่อบังคับลง โดยไม่สนว่า timm จะบ่น
+          pip install --pre torch torchvision --index-url https://download.pytorch.org/whl/nightly/cu124 --no-deps
           
-          # เช็คของ (แก้ Syntax Error แล้ว)
+          # Verify
           python -c "import torch; print(f'🔥 Torch: {torch.__version__}, CUDA: {torch.version.cuda}, GPU: {torch.cuda.get_device_name(0) if torch.cuda.is_available() else None}')"
 
       - name: 🔗 Link Real Data
