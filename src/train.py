@@ -112,7 +112,7 @@ def main():
 
     # 🔥 Early Stopping Params
     best_val_loss = float('inf')
-    patience = cfg.get('patience', 7)  # อ่านจาก config ถ้าไม่มีใช้ 7
+    patience = cfg.get('patience', 3)  # อ่านจาก config ถ้าไม่มีใช้ 7
     early_stop_counter = 0
     best_acc = 0.0
 
