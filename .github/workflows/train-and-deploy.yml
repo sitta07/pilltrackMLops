@@ -31,7 +31,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      # 2. เตรียม Environment & แก้บั๊ก RTX 50 Series (Dependency Fix)
+      # 2. เตรียม Environment & แก้บั๊ก RTX 50 Series (Dependency Fix + Syntax Fix)
       - name: ⚙️ Setup Environment (Force RTX 50 Support)
         shell: bash
         run: |
@@ -53,8 +53,8 @@ jobs:
           echo "⬇️ Installing Torchvision (No Deps Mode)..."
           pip install --pre torchvision --index-url https://download.pytorch.org/whl/nightly/cu124 --no-deps
           
-          # เช็คของหน่อยว่าได้ GPU จริงไหม
-          python -c "import torch; print(f'🔥 Torch: {torch.__version__}, CUDA: {torch.version.cuda}, GPU: {torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'None'}')"
+          # 4. เช็คของ (🔥 แก้ Syntax Error แล้ว: ลบ ' ' รอบคำว่า None ออก)
+          python -c "import torch; print(f'🔥 Torch: {torch.__version__}, CUDA: {torch.version.cuda}, GPU: {torch.cuda.get_device_name(0) if torch.cuda.is_available() else None}')"
           
           # ลง Library อื่นๆ ตามปกติ
           pip install -r requirements.txt -i https://mirror.kku.ac.th/pypi/web/simple
