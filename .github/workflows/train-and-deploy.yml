@@ -40,8 +40,8 @@ jobs:
           pip uninstall -y torch torchvision torchaudio timm kornia transparent-background || true
           
           echo "📦 Phase 1: Installing Standard Dependencies..."
-          # ลง requirements ปกติ (ยอมให้มันลง Torch Stable มาก่อน)
-          pip install -r requirements.txt -i https://mirror.kku.ac.th/pypi/web/simple
+          # ลง requirements ปกติ (ใช้ Server หลัก PyPI ช้าหน่อยแต่ชัวร์)
+          pip install -r requirements.txt
           pip install "dvc[s3]>=3.0" python-dotenv
           
           echo "🔄 Phase 2: Upgrading to RTX 50 Engine (Nightly)..."
