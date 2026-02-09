@@ -13,3 +13,9 @@ rembg[gpu]
 onnxruntime-gpu
 Pillow
 pooch
+jsonschema
+scikit-image
+scipy
+pymatting
+filetype
+gradio
