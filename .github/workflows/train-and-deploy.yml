@@ -142,8 +142,14 @@ jobs:
           source ~/miniconda3/etc/profile.d/conda.sh
           conda activate pilltrack
           
-          # 🔥 EXPORT LD_LIBRARY_PATH (ต้องใส่ทุก Step ที่รัน Python)
-          export LD_LIBRARY_PATH=$CONDA_PREFIX/lib:$LD_LIBRARY_PATH
+          # --------------------------------------------------------------------
+          # 🔥 RTX 50 CONFIG: The Magic Environment Variables
+          # --------------------------------------------------------------------
+          # สำคัญมาก! ช่วยให้รัน PyTorch บนการ์ดใหม่ที่ Kernel ยังไม่สมบูรณ์ได้ (แก้ no kernel image)
+          export CUDA_MODULE_LOADING=LAZY
+          
+          # สำคัญมาก! รวม Path ของ System Library เข้าไปด้วย
+          export LD_LIBRARY_PATH=$CONDA_PREFIX/lib:/usr/lib/wsl/lib:/usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH
           
           TAG_NAME=${GITHUB_REF#refs/tags/}
           echo "🏷️ Processing Tag: $TAG_NAME"
