@@ -65,6 +65,7 @@ train:
     lr: 0.00003                 # ใช้ OneCycleLR Scheduler จะจึ้งมาก
     weight_decay: 0.05          # เพิ่มขึ้นนิดนึงกัน Overfit
     dropout: 0.4                # กัน Overfit เพราะข้อมูล Fine-grained มักจำจด
+    embed_dim: 512              # ขนาด Vector ของ ArcFace
     focal:
       gamma: 2.0                # ปรับให้ Standard ขึ้น
       alpha: 0.25
