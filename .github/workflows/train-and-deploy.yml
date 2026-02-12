@@ -41,12 +41,11 @@ jobs:
           echo "🔍 Checking existing PyTorch version..."
           if python -c "import torch; exit(0) if 'dev' in torch.__version__ and 'cu128' in torch.__version__ and torch.cuda.is_available() else exit(1)"; then
              echo "✅ RTX 50 Ready! (Correct CUDA 12.8 version detected)"
-             # ลบ rembg ออกจาก list ที่จะ install เพื่อความรวดเร็ว
              pip install "dvc[s3]>=3.0" python-dotenv
           else
              echo "🛑 Wrong PyTorch version or old CUDA detected. Updating for RTX 50..."
              
-             # 1. ล้างบางของเก่า (เอาตัวถ่วงเวลาออกไป)
+             # 1. ล้างบางของเก่า
              pip uninstall -y torch torchvision torchaudio timm kornia transparent-background rembg jsonschema onnxruntime-gpu || true
              
              # 2. ลง Library พื้นฐาน
@@ -85,26 +84,32 @@ jobs:
           python -c "import torch; print(f'🔥 Torch Version: {torch.__version__}'); print(f'🔥 GPU: {torch.cuda.get_device_name(0) if torch.cuda.is_available() else \"NOT AVAILABLE\"}');"
 
       # ----------------------------------------------------------------------
-      # 🔗 DATA LINKING (THE BYPASS TRICK)
+      # 🔗 DATA LINKING (FIXED: NO NESTED FOLDER)
       # ----------------------------------------------------------------------
       - name: 🔗 Link Real Data & Bypass Preprocess
         run: |
           echo "🔗 Linking inputs..."
+          
+          # 1. ล้างโฟลเดอร์ data ทิ้งก่อนเพื่อความชัวร์
           rm -rf data
-          mkdir -p data/processed_box
-          mkdir -p data/processed_pill
+          
+          # 2. สร้างโฟลเดอร์แม่
+          mkdir -p data
           
           if [ -d "$REAL_PROJECT_PATH/data/raw_box" ]; then
-            # Link Raw
+            # Link Raw ปกติ
             ln -sfn "$REAL_PROJECT_PATH/data/raw_box" ./data/raw_box
             ln -sfn "$REAL_PROJECT_PATH/data/raw_pill" ./data/raw_pill
             
-            # 🔥 BYPASS: Link Raw ไปที่ Processed เลย
-            # (นี่คือไฟล์ที่พี่ตัดมาแล้ว DVC จะมองเห็นไฟล์เหล่านี้ในขั้นตอนถัดไป)
+            # 🔥 BYPASS FIX: Link ตรงๆ โดยไม่สร้าง Folder ปลายทาง (แก้ปัญหา Folder ซ้อน)
             ln -sfn "$REAL_PROJECT_PATH/data/raw_box" ./data/processed_box
             ln -sfn "$REAL_PROJECT_PATH/data/raw_pill" ./data/processed_pill
             
-            echo "✅ Data Setup Complete: Raw treated as Processed!"
+            echo "✅ Data Setup Complete! (Symlink Corrected)"
+            
+            # 🕵️ DEBUG: เช็คว่าข้างในมีโฟลเดอร์ Class ยาไหม (ถ้ามีคือถูก)
+            echo "📂 Checking structure inside processed_box:"
+            ls -F data/processed_box/ | head -n 5
           else
              echo "❌ Error: Raw data not found"
              exit 1
@@ -125,7 +130,7 @@ jobs:
           dvc pull experiments/ metrics/ --force || echo "⚠️ No models on S3 yet, starting fresh."
 
       # ----------------------------------------------------------------------
-      # 🤖 RUN PIPELINE (FIXED: FORCE COMMIT & SKIP SCRIPT)
+      # 🤖 RUN PIPELINE (SKIP PREPROCESS WITH COMMIT)
       # ----------------------------------------------------------------------
       - name: 🤖 Run AI Pipeline (CUDA 12.8 Native)
         shell: bash
@@ -153,7 +158,6 @@ jobs:
             echo "⚡ Bypassing Preprocess for BOX (Committing current state)..."
             
             # 🔥 FORCE DVC TO ACCEPT SYMLINKED FILES
-            # สั่ง commit เพื่อข้ามการรัน remove_background.py
             dvc commit preprocess_box -f
             
             if [[ "$TAG_NAME" =~ "major" ]]; then
@@ -198,9 +202,11 @@ jobs:
           cp -r experiments "$REAL_PROJECT_PATH/" || true
           cp -r metrics "$REAL_PROJECT_PATH/" || true
           cp dvc.lock "$REAL_PROJECT_PATH/" || true
-          # Sync กลับไปที่ processed folder (เผื่อมีไฟล์ augment เพิ่มเติม)
+          # Sync กลับ (โฟลเดอร์ processed_box จริงๆ คือ raw แต่ถ้ามีไฟล์ใหม่เกิดขึ้นจากการ augment ก็จะถูก sync กลับ)
+          # หมายเหตุ: ถ้า augment สร้างไฟล์ใน processed ก็จะปนกับ raw ระวังตรงนี้ด้วย (แต่ปกติ augment จะสร้าง folder ใหม่)
           mkdir -p "$REAL_PROJECT_PATH/data/processed_box"
           mkdir -p "$REAL_PROJECT_PATH/data/processed_pill"
+          # ใช้ -u (update) เพื่อ copy เฉพาะไฟล์ที่ใหม่กว่า
           if [ -d "data/processed_box" ]; then cp -ru data/processed_box/* "$REAL_PROJECT_PATH/data/processed_box/" || true; fi
           if [ -d "data/processed_pill" ]; then cp -ru data/processed_pill/* "$REAL_PROJECT_PATH/data/processed_pill/" || true; fi
 
