@@ -29,7 +29,7 @@ jobs:
           fetch-depth: 0
 
       # ----------------------------------------------------------------------
-      # ⚙️ SETUP ENVIRONMENT (OPTIMIZED & CLEANED)
+      # ⚙️ SETUP ENVIRONMENT (CLEAN & FAST)
       # ----------------------------------------------------------------------
       - name: ⚙️ Setup Environment (RTX 5060 Ti / CUDA 12.8)
         shell: bash
@@ -41,18 +41,15 @@ jobs:
           echo "🔍 Checking existing PyTorch version..."
           if python -c "import torch; exit(0) if 'dev' in torch.__version__ and 'cu128' in torch.__version__ and torch.cuda.is_available() else exit(1)"; then
              echo "✅ RTX 50 Ready! (Correct CUDA 12.8 version detected)"
-             # ลบ lib เกี่ยวกับ bg removal ออกจาก req.txt ในใจ (หรือลบ manual)
-             # pip install -r requirements.txt --no-deps <--- ระวังตรงนี้ถ้าใน txt มี rembg มันจะโหลดมา
-             # แนะนำให้ install เฉพาะที่จำเป็นจริงๆ หรือแก้ requirements.txt ให้ clean
+             # ลบ rembg ออกจาก list ที่จะ install เพื่อความรวดเร็ว
              pip install "dvc[s3]>=3.0" python-dotenv
           else
              echo "🛑 Wrong PyTorch version or old CUDA detected. Updating for RTX 50..."
              
-             # 1. ล้างบางของเก่า (เอา rembg, transparent-background ออกไปเลย)
+             # 1. ล้างบางของเก่า (เอาตัวถ่วงเวลาออกไป)
              pip uninstall -y torch torchvision torchaudio timm kornia transparent-background rembg jsonschema onnxruntime-gpu || true
              
-             # 2. ลง Library พื้นฐาน (แนะนำให้ลบ rembg ออกจาก requirements.txt ใน repo ด้วยนะครับ จะได้ไม่โหลดซ้ำ)
-             # หรือถ้าขี้เกียจแก้ไฟล์ ก็ปล่อยให้มันโหลดไป แต่เราไม่ใช้
+             # 2. ลง Library พื้นฐาน
              pip install -r requirements.txt
              pip install "dvc[s3]>=3.0" python-dotenv
              
@@ -102,9 +99,8 @@ jobs:
             ln -sfn "$REAL_PROJECT_PATH/data/raw_box" ./data/raw_box
             ln -sfn "$REAL_PROJECT_PATH/data/raw_pill" ./data/raw_pill
             
-            # 🔥 BYPASS: Link Raw ไปที่ Processed เลย (เพราะตัดมาแล้ว)
-            # หมายเหตุ: เช็ค structure ดีๆ ว่า code คาดหวัง path ไหน
-            # ถ้าปกติ code อ่านจาก data/processed_box/images ให้แก้บรรทัดล่างเป็น ./data/processed_box/images
+            # 🔥 BYPASS: Link Raw ไปที่ Processed เลย
+            # (นี่คือไฟล์ที่พี่ตัดมาแล้ว DVC จะมองเห็นไฟล์เหล่านี้ในขั้นตอนถัดไป)
             ln -sfn "$REAL_PROJECT_PATH/data/raw_box" ./data/processed_box
             ln -sfn "$REAL_PROJECT_PATH/data/raw_pill" ./data/processed_pill
             
@@ -129,7 +125,7 @@ jobs:
           dvc pull experiments/ metrics/ --force || echo "⚠️ No models on S3 yet, starting fresh."
 
       # ----------------------------------------------------------------------
-      # 🤖 RUN PIPELINE (SKIP PREPROCESS)
+      # 🤖 RUN PIPELINE (FIXED: FORCE COMMIT & SKIP SCRIPT)
       # ----------------------------------------------------------------------
       - name: 🤖 Run AI Pipeline (CUDA 12.8 Native)
         shell: bash
@@ -138,14 +134,6 @@ jobs:
           conda activate pilltrack
           
           unset CUDA_MODULE_LOADING CUDA_FORCE_PTX_JIT TORCH_CUDNN_V8_API_ENABLED
-          
-          TAG_NAME=${GITHUB_REF#refs/tags/}
-          
-          # ❌ COMMENTED OUT PREPROCESS (User ตัดมือมาแล้ว)
-          # if [[ "$TAG_NAME" =~ "box" ]]; then dvc repro preprocess_box -f; fi
-          # if [[ "$TAG_NAME" =~ "pill" ]]; then dvc repro preprocess_pill -f; fi
-          
-          # Safety Net
           sed -i '/import torch/a torch.backends.cudnn.benchmark = False\ntorch.backends.cudnn.deterministic = True\ntorch.backends.cuda.matmul.allow_tf32 = True' src/train.py
 
           echo "🏎️ Enabling Blackwell (sm_120) Support..."
@@ -154,14 +142,22 @@ jobs:
           export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
           export LD_LIBRARY_PATH=$CONDA_PREFIX/lib:/usr/lib/wsl/lib:/usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH
           
-          echo "🚀 Starting Training..."
+          TAG_NAME=${GITHUB_REF#refs/tags/}
           
-          # BOX PIPELINE
+          echo "🚀 Starting Pipeline execution..."
+          
+          # ========================================================
+          # 📦 BOX PIPELINE
+          # ========================================================
           if [[ "$TAG_NAME" =~ "box" ]]; then
+            echo "⚡ Bypassing Preprocess for BOX (Committing current state)..."
+            
+            # 🔥 FORCE DVC TO ACCEPT SYMLINKED FILES
+            # สั่ง commit เพื่อข้ามการรัน remove_background.py
+            dvc commit preprocess_box -f
+            
             if [[ "$TAG_NAME" =~ "major" ]]; then
-              # ข้าม preprocess ไปเรียก train เลย
-              # ถ้า DVC งอแงว่าหา preprocess ไม่เจอ อาจต้องใช้ python src/train.py แทน หรือ dvc run -f
-              dvc repro train_box --force
+              dvc repro train_box
             else
               dvc repro augment_box
               dvc commit train_box -f 
@@ -170,10 +166,17 @@ jobs:
             fi
           fi
           
-          # PILL PIPELINE
+          # ========================================================
+          # 💊 PILL PIPELINE
+          # ========================================================
           if [[ "$TAG_NAME" =~ "pill" ]]; then
+            echo "⚡ Bypassing Preprocess for PILL (Committing current state)..."
+            
+            # 🔥 FORCE DVC TO ACCEPT SYMLINKED FILES
+            dvc commit preprocess_pill -f
+            
             if [[ "$TAG_NAME" =~ "major" ]]; then
-              dvc repro train_pill --force
+              dvc repro train_pill
             else
               dvc repro augment_pill
               dvc commit train_pill -f
@@ -195,7 +198,7 @@ jobs:
           cp -r experiments "$REAL_PROJECT_PATH/" || true
           cp -r metrics "$REAL_PROJECT_PATH/" || true
           cp dvc.lock "$REAL_PROJECT_PATH/" || true
-          # Sync กลับไปที่ processed folder (เผื่อมีการเขียนทับหรือ augment)
+          # Sync กลับไปที่ processed folder (เผื่อมีไฟล์ augment เพิ่มเติม)
           mkdir -p "$REAL_PROJECT_PATH/data/processed_box"
           mkdir -p "$REAL_PROJECT_PATH/data/processed_pill"
           if [ -d "data/processed_box" ]; then cp -ru data/processed_box/* "$REAL_PROJECT_PATH/data/processed_box/" || true; fi
