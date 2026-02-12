@@ -73,8 +73,8 @@ stages:
     outs:
     - path: data/dataset_train_final_box
       hash: md5
-      md5: 085c1bc483487e3699cea6819d74b6d0.dir
-      size: 1820528623
+      md5: 8f10254fe534a769fb2d0c84d6dcd44e.dir
+      size: 1801325364
       nfiles: 5085
   train_box:
     cmd: python src/train.py --train_dir data/dataset_train_final_box --val_dir 
@@ -83,14 +83,14 @@ stages:
     deps:
     - path: data/dataset_split_box/val
       hash: md5
-      md5: 889c46f5654b1471955e917301b39314.dir
-      size: 18528598
-      nfiles: 137
+      md5: d81ffc53bc139c05d25c885661544bec.dir
+      size: 217158710
+      nfiles: 485
     - path: data/dataset_train_final_box
       hash: md5
-      md5: a13f82ec8868ef8cee4089772bde0f22.dir
-      size: 1152459269
-      nfiles: 9320
+      md5: 8f10254fe534a769fb2d0c84d6dcd44e.dir
+      size: 1801325364
+      nfiles: 5085
     - path: src/train.py
       hash: md5
       md5: 88575db685bd4e641ddd07667f24e9cb
@@ -99,23 +99,22 @@ stages:
       params.yaml:
         train.box:
           model_name: convnext_small
-          img_size: 224
-          batch_size: 32
-          epochs: 4
-          lr: 2.9e-05
-          weight_decay: 0.00042
-          dropout: 0.39
+          img_size: 512
+          batch_size: 16
+          epochs: 3
+          lr: 3e-05
+          weight_decay: 0.05
+          dropout: 0.4
           embed_dim: 512
           focal:
-            gamma: 3.89
+            gamma: 2.0
             alpha: 0.25
-          seed: 42
           num_workers: 8
     outs:
     - path: experiments/arcface_lite_v1/box
       hash: md5
-      md5: 4c985700037abeadb68ac69b1adde0ee.dir
-      size: 199613017
+      md5: 04e916c732c2f9a1d84834bae3a9ab30.dir
+      size: 199608782
       nfiles: 2
   finetune_box:
     cmd: python src/finetune.py --data_dir data/dataset_train_final_box 
