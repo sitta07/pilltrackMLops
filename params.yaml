@@ -61,7 +61,7 @@ train:
     model_name: "convnext_small" # หรือ "swin_base_patch4_window12_384"
     img_size: 512               # ✅ เพิ่มเพื่อให้เห็น Detail ตัวหนังสือ
     batch_size: 16              # ⚠️ ลดลงหน่อยเพราะเพิ่ม img_size (แลกความชัด)
-    epochs: 30                  # ✅ ให้เวลาโมเดลได้เรียนรู้จริงๆ
+    epochs: 5                  # ✅ ให้เวลาโมเดลได้เรียนรู้จริงๆ
     lr: 0.00003                 # ใช้ OneCycleLR Scheduler จะจึ้งมาก
     weight_decay: 0.05          # เพิ่มขึ้นนิดนึงกัน Overfit
     dropout: 0.4                # กัน Overfit เพราะข้อมูล Fine-grained มักจำจด

@@ -29,7 +29,7 @@ jobs:
           fetch-depth: 0
 
       # ----------------------------------------------------------------------
-      # ⚙️ SETUP ENVIRONMENT (THE CUDA 12.8 FIX)
+      # ⚙️ SETUP ENVIRONMENT (OPTIMIZED & CLEANED)
       # ----------------------------------------------------------------------
       - name: ⚙️ Setup Environment (RTX 5060 Ti / CUDA 12.8)
         shell: bash
@@ -39,27 +39,28 @@ jobs:
           conda activate pilltrack
           
           echo "🔍 Checking existing PyTorch version..."
-          # เช็คว่ามี Torch Nightly ที่เป็น cu128 หรือไม่
           if python -c "import torch; exit(0) if 'dev' in torch.__version__ and 'cu128' in torch.__version__ and torch.cuda.is_available() else exit(1)"; then
              echo "✅ RTX 50 Ready! (Correct CUDA 12.8 version detected)"
-             pip install -r requirements.txt --no-deps
+             # ลบ lib เกี่ยวกับ bg removal ออกจาก req.txt ในใจ (หรือลบ manual)
+             # pip install -r requirements.txt --no-deps <--- ระวังตรงนี้ถ้าใน txt มี rembg มันจะโหลดมา
+             # แนะนำให้ install เฉพาะที่จำเป็นจริงๆ หรือแก้ requirements.txt ให้ clean
              pip install "dvc[s3]>=3.0" python-dotenv
           else
              echo "🛑 Wrong PyTorch version or old CUDA detected. Updating for RTX 50..."
              
-             # 1. ล้างบางของเก่า (สำคัญมาก! ต้องลบตัว cu124 ออกให้หมด)
+             # 1. ล้างบางของเก่า (เอา rembg, transparent-background ออกไปเลย)
              pip uninstall -y torch torchvision torchaudio timm kornia transparent-background rembg jsonschema onnxruntime-gpu || true
              
-             # 2. ลง Library ปกติ
+             # 2. ลง Library พื้นฐาน (แนะนำให้ลบ rembg ออกจาก requirements.txt ใน repo ด้วยนะครับ จะได้ไม่โหลดซ้ำ)
+             # หรือถ้าขี้เกียจแก้ไฟล์ ก็ปล่อยให้มันโหลดไป แต่เราไม่ใช้
              pip install -r requirements.txt
              pip install "dvc[s3]>=3.0" python-dotenv
              
-             # 3. 🔥 ลง PyTorch Nightly แบบ CUDA 12.8 (พระเอกของเรา)
+             # 3. 🔥 ลง PyTorch Nightly แบบ CUDA 12.8
              echo "⬇️ Installing PyTorch Nightly with CUDA 12.8 Support..."
-             # ใช้ --index-url ของ cu128 โดยเฉพาะ
              pip install --pre torch torchvision --index-url https://download.pytorch.org/whl/nightly/cu128 --no-deps
              
-             # 4. ลง NVIDIA Libraries (เอาเวอร์ชันล่าสุด)
+             # 4. ลง NVIDIA Libraries
              echo "🔧 Installing latest NVIDIA libraries..."
              pip install nvidia-cuda-runtime-cu12 nvidia-cuda-nvrtc-cu12 \
                          nvidia-cusparselt-cu12 nvidia-cublas-cu12 \
@@ -77,25 +78,37 @@ jobs:
               lib_name=$(basename "$lib_file")
               ln -sf "$lib_file" "$CONDA_PREFIX/lib/$lib_name"
           done
-          # Link ไฟล์ Version หลัก
           ln -sf $CONDA_PREFIX/lib/libcublas.so.12 $CONDA_PREFIX/lib/libcublas.so 2>/dev/null || true
           ln -sf $CONDA_PREFIX/lib/libcudart.so.12 $CONDA_PREFIX/lib/libcudart.so 2>/dev/null || true
           ln -sf $CONDA_PREFIX/lib/libcudnn.so.9 $CONDA_PREFIX/lib/libcudnn.so 2>/dev/null || true
           
           export LD_LIBRARY_PATH=$CONDA_PREFIX/lib:$LD_LIBRARY_PATH
           
-          # Final Check (ต้องขึ้น cu128)
+          # Final Check
           python -c "import torch; print(f'🔥 Torch Version: {torch.__version__}'); print(f'🔥 GPU: {torch.cuda.get_device_name(0) if torch.cuda.is_available() else \"NOT AVAILABLE\"}');"
 
-      - name: 🔗 Link Real Data
+      # ----------------------------------------------------------------------
+      # 🔗 DATA LINKING (THE BYPASS TRICK)
+      # ----------------------------------------------------------------------
+      - name: 🔗 Link Real Data & Bypass Preprocess
         run: |
           echo "🔗 Linking inputs..."
           rm -rf data
-          mkdir -p data
+          mkdir -p data/processed_box
+          mkdir -p data/processed_pill
+          
           if [ -d "$REAL_PROJECT_PATH/data/raw_box" ]; then
+            # Link Raw
             ln -sfn "$REAL_PROJECT_PATH/data/raw_box" ./data/raw_box
             ln -sfn "$REAL_PROJECT_PATH/data/raw_pill" ./data/raw_pill
-            echo "✅ Input Data Linked!"
+            
+            # 🔥 BYPASS: Link Raw ไปที่ Processed เลย (เพราะตัดมาแล้ว)
+            # หมายเหตุ: เช็ค structure ดีๆ ว่า code คาดหวัง path ไหน
+            # ถ้าปกติ code อ่านจาก data/processed_box/images ให้แก้บรรทัดล่างเป็น ./data/processed_box/images
+            ln -sfn "$REAL_PROJECT_PATH/data/raw_box" ./data/processed_box
+            ln -sfn "$REAL_PROJECT_PATH/data/raw_pill" ./data/processed_pill
+            
+            echo "✅ Data Setup Complete: Raw treated as Processed!"
           else
              echo "❌ Error: Raw data not found"
              exit 1
@@ -116,7 +129,7 @@ jobs:
           dvc pull experiments/ metrics/ --force || echo "⚠️ No models on S3 yet, starting fresh."
 
       # ----------------------------------------------------------------------
-      # 🤖 RUN PIPELINE (WITH CUDA 12.8 FLAGS)
+      # 🤖 RUN PIPELINE (SKIP PREPROCESS)
       # ----------------------------------------------------------------------
       - name: 🤖 Run AI Pipeline (CUDA 12.8 Native)
         shell: bash
@@ -124,34 +137,31 @@ jobs:
           source ~/miniconda3/etc/profile.d/conda.sh
           conda activate pilltrack
           
-          # 1. PREPROCESS (CLEAN ENV)
           unset CUDA_MODULE_LOADING CUDA_FORCE_PTX_JIT TORCH_CUDNN_V8_API_ENABLED
           
           TAG_NAME=${GITHUB_REF#refs/tags/}
-          if [[ "$TAG_NAME" =~ "box" ]]; then dvc repro preprocess_box -f; fi
-          if [[ "$TAG_NAME" =~ "pill" ]]; then dvc repro preprocess_pill -f; fi
           
-          # 2. CODE INJECTION (Safety Net)
-          # ปิด CuDNN benchmark เพื่อความชัวร์ (แต่ cu128 น่าจะแก้แล้ว)
+          # ❌ COMMENTED OUT PREPROCESS (User ตัดมือมาแล้ว)
+          # if [[ "$TAG_NAME" =~ "box" ]]; then dvc repro preprocess_box -f; fi
+          # if [[ "$TAG_NAME" =~ "pill" ]]; then dvc repro preprocess_pill -f; fi
+          
+          # Safety Net
           sed -i '/import torch/a torch.backends.cudnn.benchmark = False\ntorch.backends.cudnn.deterministic = True\ntorch.backends.cuda.matmul.allow_tf32 = True' src/train.py
 
-          # 3. TRAINING (CUDA 12.8 BLACKWELL MODE)
           echo "🏎️ Enabling Blackwell (sm_120) Support..."
-          
-          # 🔥 ถ้าใช้ cu128 เราสามารถระบุ 10.0 (Blackwell) ได้เลย!
           export TORCH_CUDA_ARCH_LIST="10.0"
-          
-          # แต่ถ้า Wheel ยังไม่สมบูรณ์ ให้ใช้ 9.0+PTX เป็นตัวสำรอง (Uncomment ถ้า 10.0 ยังพัง)
-          # export TORCH_CUDA_ARCH_LIST="9.0+PTX"
-          
           export CUDA_MODULE_LOADING=LAZY
           export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
           export LD_LIBRARY_PATH=$CONDA_PREFIX/lib:/usr/lib/wsl/lib:/usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH
           
           echo "🚀 Starting Training..."
+          
+          # BOX PIPELINE
           if [[ "$TAG_NAME" =~ "box" ]]; then
             if [[ "$TAG_NAME" =~ "major" ]]; then
-              dvc repro train_box
+              # ข้าม preprocess ไปเรียก train เลย
+              # ถ้า DVC งอแงว่าหา preprocess ไม่เจอ อาจต้องใช้ python src/train.py แทน หรือ dvc run -f
+              dvc repro train_box --force
             else
               dvc repro augment_box
               dvc commit train_box -f 
@@ -160,9 +170,10 @@ jobs:
             fi
           fi
           
+          # PILL PIPELINE
           if [[ "$TAG_NAME" =~ "pill" ]]; then
             if [[ "$TAG_NAME" =~ "major" ]]; then
-              dvc repro train_pill
+              dvc repro train_pill --force
             else
               dvc repro augment_pill
               dvc commit train_pill -f
@@ -184,6 +195,7 @@ jobs:
           cp -r experiments "$REAL_PROJECT_PATH/" || true
           cp -r metrics "$REAL_PROJECT_PATH/" || true
           cp dvc.lock "$REAL_PROJECT_PATH/" || true
+          # Sync กลับไปที่ processed folder (เผื่อมีการเขียนทับหรือ augment)
           mkdir -p "$REAL_PROJECT_PATH/data/processed_box"
           mkdir -p "$REAL_PROJECT_PATH/data/processed_pill"
           if [ -d "data/processed_box" ]; then cp -ru data/processed_box/* "$REAL_PROJECT_PATH/data/processed_box/" || true; fi
