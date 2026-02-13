@@ -46,7 +46,7 @@ train:
     img_size: 512
     batch_size: 16
     epochs: 3        # เทรนจริงจังใช้ 15-20 รอบ
-    lr: 0.0001
+    lr: 0.00003
     weight_decay: 0.0001
     dropout: 0.3
     embed_dim: 512    # ขนาด Vector ของ ArcFace
