@@ -60,7 +60,7 @@ stages:
     params:
       params.yaml:
         augment.box:
-          target_per_class: 200
+          target_per_class: 500
           aug_params:
             rotate_limit: 15
             p_rotate: 0.5
@@ -73,9 +73,9 @@ stages:
     outs:
     - path: data/dataset_train_final_box
       hash: md5
-      md5: 8f10254fe534a769fb2d0c84d6dcd44e.dir
-      size: 1801325364
-      nfiles: 5085
+      md5: 6d85e456a6b27c7c0f57143305e335a4.dir
+      size: 4943158646
+      nfiles: 13238
   train_box:
     cmd: python src/train.py --train_dir data/dataset_train_final_box --val_dir 
       data/dataset_split_box/val --output_dir experiments/arcface_lite_v1/box 

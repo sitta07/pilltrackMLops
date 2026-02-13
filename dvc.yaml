@@ -71,7 +71,7 @@ stages:
     - metrics/box_metrics.json:
         cache: false
 
-  # 2. สำหรับ Major/Full Mode (เช็ค Base Model ตรงๆ) 🔥 เพิ่มใหม่!
+  # 2. สำหรับ Major/Full Mode 
   evaluate_base_box:
     cmd: python src/evaluate.py --test_dir data/dataset_split_box/test --model_dir experiments/arcface_lite_v1/box --metrics_out metrics/box_base_metrics.json --type box --threshold 70.0
     deps:
