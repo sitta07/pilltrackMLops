@@ -216,7 +216,7 @@ stages:
     params:
       params.yaml:
         augment.pill:
-          target_per_class: 50
+          target_per_class: 400
           aug_params:
             rotate_limit: 180
             p_rotate: 0.8
@@ -227,9 +227,9 @@ stages:
     outs:
     - path: data/dataset_train_final_pill
       hash: md5
-      md5: ff78c9ca790c206c8ae8d871acd7b367.dir
-      size: 296676938
-      nfiles: 4264
+      md5: 8851d3816b060c093abe9a75f58194d8.dir
+      size: 1512593502
+      nfiles: 12792
   train_pill:
     cmd: python src/train.py --train_dir data/dataset_train_final_pill --val_dir
       data/dataset_split_pill/val --output_dir experiments/arcface_lite_v1/pill 
@@ -237,25 +237,25 @@ stages:
     deps:
     - path: data/dataset_split_pill/val
       hash: md5
-      md5: ff8e1ba4f113974f06f67278fdd97841.dir
-      size: 1630937
-      nfiles: 24
+      md5: 3682786488ff58148885a502648b0b05.dir
+      size: 106600112
+      nfiles: 1229
     - path: data/dataset_train_final_pill
       hash: md5
-      md5: 8b108e4d7b2a9338b54707c427fba110.dir
-      size: 48404923
-      nfiles: 424
+      md5: 8851d3816b060c093abe9a75f58194d8.dir
+      size: 1512593502
+      nfiles: 12792
     - path: src/train.py
       hash: md5
-      md5: 314253bc0a7b2e072cde9e1a4b085633
-      size: 5384
+      md5: 88575db685bd4e641ddd07667f24e9cb
+      size: 7344
     params:
       params.yaml:
         train.pill:
           model_name: convnext_small
-          img_size: 224
+          img_size: 512
           batch_size: 16
-          epochs: 2
+          epochs: 3
           lr: 0.0001
           weight_decay: 0.0001
           dropout: 0.3
@@ -268,8 +268,8 @@ stages:
     outs:
     - path: experiments/arcface_lite_v1/pill
       hash: md5
-      md5: 87d5b0e86cc8b48218990e52df7abe85.dir
-      size: 199570625
+      md5: 09194bf5bd554fe7f8ab9cd51e5d4127.dir
+      size: 199594198
       nfiles: 2
   finetune_pill:
     cmd: python src/finetune.py --data_dir data/dataset_train_final_pill 
