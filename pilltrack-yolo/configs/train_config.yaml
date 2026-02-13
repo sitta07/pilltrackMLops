@@ -1,0 +1,32 @@
+# ==============================
+# YOLOv8 Training Configuration
+# ==============================
+
+# Dataset (เปลี่ยนแค่บรรทัดนี้พอ)
+dataset_root: dataset
+dataset_folder: obj_pilltrack_v1
+
+# Model
+model: yolov8n.pt
+
+# Training
+epochs: 150
+imgsz: 640
+batch: 16
+patience: 30
+lr0: 0.001
+
+# Augmentation
+degrees: 5
+translate: 0.1
+scale: 0.3
+fliplr: 0.5
+hsv_h: 0.015
+hsv_s: 0.7
+hsv_v: 0.4
+
+# System
+device: 0
+workers: 4
+project: runs/detect
+name: pilltrack_exp

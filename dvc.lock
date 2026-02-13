@@ -162,28 +162,28 @@ stages:
     deps:
     - path: data/raw_pill
       hash: md5
-      md5: 2966e7369d9b975869645d1ad077bdb9.dir
-      size: 5261331
-      nfiles: 106
+      md5: b1ce7be7723d2b26898a7ce8e6a05351.dir
+      size: 529053888
+      nfiles: 6111
     - path: src/data/remove_background.py
       hash: md5
-      md5: 8b96c4610784a982273f4b16436a73d9
-      size: 3749
+      md5: 380ee30fedf4953bc5ee931841cd0ee7
+      size: 4105
     outs:
     - path: data/processed_pill
       hash: md5
-      md5: 76a404822cd8df24b9fd0f811b943731.dir
-      size: 5439423
-      nfiles: 102
+      md5: b1ce7be7723d2b26898a7ce8e6a05351.dir
+      size: 529053888
+      nfiles: 6111
   split_pill:
     cmd: python src/data/split_data.py --input data/processed_pill --output 
       data/dataset_split_pill
     deps:
     - path: data/processed_pill
       hash: md5
-      md5: 76a404822cd8df24b9fd0f811b943731.dir
-      size: 5439423
-      nfiles: 102
+      md5: b1ce7be7723d2b26898a7ce8e6a05351.dir
+      size: 529053888
+      nfiles: 6111
     - path: src/data/split_data.py
       hash: md5
       md5: 028308f6ef18eb9f907c165ea0303708
@@ -197,18 +197,18 @@ stages:
     outs:
     - path: data/dataset_split_pill
       hash: md5
-      md5: c42b8423dbc2d9806e7a9b4e104a1aab.dir
-      size: 5439423
-      nfiles: 102
+      md5: 83845bbc534c61f22c18ad7b30287d33.dir
+      size: 529053888
+      nfiles: 6111
   augment_pill:
     cmd: python src/data/augment.py --input data/dataset_split_pill/train 
       --output data/dataset_train_final_pill --type pill
     deps:
     - path: data/dataset_split_pill/train
       hash: md5
-      md5: cbb569ea51270cda562c38b6cede769f.dir
-      size: 2968731
-      nfiles: 65
+      md5: 69d72b4f58b729d82c5f53d92886a10f.dir
+      size: 368811640
+      nfiles: 4264
     - path: src/data/augment.py
       hash: md5
       md5: ec107f83c0410206702b58e27f35bd69
@@ -227,9 +227,9 @@ stages:
     outs:
     - path: data/dataset_train_final_pill
       hash: md5
-      md5: 8b108e4d7b2a9338b54707c427fba110.dir
-      size: 48404923
-      nfiles: 424
+      md5: ff78c9ca790c206c8ae8d871acd7b367.dir
+      size: 296676938
+      nfiles: 4264
   train_pill:
     cmd: python src/train.py --train_dir data/dataset_train_final_pill --val_dir
       data/dataset_split_pill/val --output_dir experiments/arcface_lite_v1/pill 
