@@ -63,7 +63,7 @@ train:
     batch_size: 16              # ⚠️ ลดลงหน่อยเพราะเพิ่ม img_size (แลกความชัด)
     epochs: 10                  # ✅ ให้เวลาโมเดลได้เรียนรู้จริงๆ
     lr: 0.00003                 # ใช้ OneCycleLR Scheduler จะจึ้งมาก
-    weight_decay: 0.05          # เพิ่มขึ้นนิดนึงกัน Overfit
+    weight_decay: 0.05          # เพิ่มขึ้นนิดนึงกัน Overfit 
     dropout: 0.4                # กัน Overfit เพราะข้อมูล Fine-grained มักจำจด
     embed_dim: 512              # ขนาด Vector ของ ArcFace
     focal:
