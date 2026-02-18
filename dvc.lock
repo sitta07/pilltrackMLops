@@ -162,9 +162,9 @@ stages:
     deps:
     - path: data/raw_pill
       hash: md5
-      md5: b1ce7be7723d2b26898a7ce8e6a05351.dir
-      size: 529053888
-      nfiles: 6111
+      md5: e3ad383d49cbb901c34ca947f47986e9.dir
+      size: 80478052
+      nfiles: 2669
     - path: src/data/remove_background.py
       hash: md5
       md5: 380ee30fedf4953bc5ee931841cd0ee7
@@ -172,18 +172,18 @@ stages:
     outs:
     - path: data/processed_pill
       hash: md5
-      md5: b1ce7be7723d2b26898a7ce8e6a05351.dir
-      size: 529053888
-      nfiles: 6111
+      md5: e3ad383d49cbb901c34ca947f47986e9.dir
+      size: 80478052
+      nfiles: 2669
   split_pill:
     cmd: python src/data/split_data.py --input data/processed_pill --output 
       data/dataset_split_pill
     deps:
     - path: data/processed_pill
       hash: md5
-      md5: b1ce7be7723d2b26898a7ce8e6a05351.dir
-      size: 529053888
-      nfiles: 6111
+      md5: e3ad383d49cbb901c34ca947f47986e9.dir
+      size: 80478052
+      nfiles: 2669
     - path: src/data/split_data.py
       hash: md5
       md5: 028308f6ef18eb9f907c165ea0303708
@@ -197,18 +197,18 @@ stages:
     outs:
     - path: data/dataset_split_pill
       hash: md5
-      md5: 83845bbc534c61f22c18ad7b30287d33.dir
-      size: 529053888
-      nfiles: 6111
+      md5: c91b4b25199d5131bf9c00a2b6704a5b.dir
+      size: 80478052
+      nfiles: 2669
   augment_pill:
     cmd: python src/data/augment.py --input data/dataset_split_pill/train 
       --output data/dataset_train_final_pill --type pill
     deps:
     - path: data/dataset_split_pill/train
       hash: md5
-      md5: 69d72b4f58b729d82c5f53d92886a10f.dir
-      size: 368811640
-      nfiles: 4264
+      md5: ee8924cd44233913c0171a4ff63b63be.dir
+      size: 55686367
+      nfiles: 1844
     - path: src/data/augment.py
       hash: md5
       md5: ec107f83c0410206702b58e27f35bd69
@@ -216,7 +216,7 @@ stages:
     params:
       params.yaml:
         augment.pill:
-          target_per_class: 400
+          target_per_class: 300
           aug_params:
             rotate_limit: 180
             p_rotate: 0.8
@@ -227,9 +227,9 @@ stages:
     outs:
     - path: data/dataset_train_final_pill
       hash: md5
-      md5: 8851d3816b060c093abe9a75f58194d8.dir
-      size: 1512593502
-      nfiles: 12792
+      md5: dde4242dfc1900a28f0760c6c697aab7.dir
+      size: 342722105
+      nfiles: 10364
   train_pill:
     cmd: python src/train.py --train_dir data/dataset_train_final_pill --val_dir
       data/dataset_split_pill/val --output_dir experiments/arcface_lite_v1/pill 
@@ -237,14 +237,14 @@ stages:
     deps:
     - path: data/dataset_split_pill/val
       hash: md5
-      md5: 3682786488ff58148885a502648b0b05.dir
-      size: 106600112
-      nfiles: 1229
+      md5: 4c0cb2a228755212c6b043a8b1eb2b15.dir
+      size: 16368175
+      nfiles: 544
     - path: data/dataset_train_final_pill
       hash: md5
-      md5: 8851d3816b060c093abe9a75f58194d8.dir
-      size: 1512593502
-      nfiles: 12792
+      md5: dde4242dfc1900a28f0760c6c697aab7.dir
+      size: 342722105
+      nfiles: 10364
     - path: src/train.py
       hash: md5
       md5: 88575db685bd4e641ddd07667f24e9cb
@@ -256,7 +256,7 @@ stages:
           img_size: 512
           batch_size: 16
           epochs: 3
-          lr: 0.0001
+          lr: 3e-05
           weight_decay: 0.0001
           dropout: 0.3
           embed_dim: 512
@@ -268,8 +268,8 @@ stages:
     outs:
     - path: experiments/arcface_lite_v1/pill
       hash: md5
-      md5: 09194bf5bd554fe7f8ab9cd51e5d4127.dir
-      size: 199594198
+      md5: ede199554eafc00890f63a4479f9524c.dir
+      size: 199623168
       nfiles: 2
   finetune_pill:
     cmd: python src/finetune.py --data_dir data/dataset_train_final_pill 
