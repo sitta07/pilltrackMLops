@@ -15,7 +15,7 @@ split:
 augment:
   # 💊 PILL: หมุนได้อิสระ กลับหัวได้
   pill:
-    target_per_class: 400
+    target_per_class: 300
     aug_params:
       rotate_limit: 180       # หมุนรอบทิศ
       p_rotate: 0.8
